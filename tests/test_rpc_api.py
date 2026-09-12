@@ -20,7 +20,9 @@ def _settings(tmp_path: Path) -> Settings:
     return Settings(
         _env_file=None,
         V52_ENV="development",
+        ALCHEMY_API_KEY="",
         ALCHEMY_ETH_RPC_URL=RPC_URL,
+        ALCHEMY_AVAX_RPC_URL="",
         V52_GRAPH_ENDPOINT="",
         V52_DATA_DIR=str(tmp_path),
         RPC_MAX_RETRIES=0,
@@ -31,6 +33,7 @@ def _unconfigured_settings(tmp_path: Path) -> Settings:
     return Settings(
         _env_file=None,
         V52_ENV="development",
+        ALCHEMY_API_KEY="",
         ALCHEMY_ETH_RPC_URL="",
         ALCHEMY_AVAX_RPC_URL="",
         HSK_RPC_URL="",

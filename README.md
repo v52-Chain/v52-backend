@@ -28,19 +28,27 @@ La suite fue verificada el 12 de septiembre: **72 tests pasaron** (4 adicionales
 
 Copiar `.env.example` a `.env` y completar valores localmente. `.env` nunca se versiona.
 
+Forma recomendada: obtener una sola API key desde el dashboard de Alchemy
+(https://dashboard.alchemy.com/apps) y configurar únicamente `ALCHEMY_API_KEY`. El
+backend arma automáticamente las URLs de Ethereum y Avalanche a partir de esa key
+usando los subdominios estándar de Alchemy por red.
+
 ```dotenv
-ALCHEMY_ETH_RPC_URL=
-ALCHEMY_AVAX_RPC_URL=
+ALCHEMY_API_KEY=
 HSK_RPC_URL=
 RPC_TIMEOUT_MS=12000
 RPC_MAX_RETRIES=2
 ```
 
-`V52_RPC_URL` sigue aceptado como fallback legacy para Ethereum, pero el nombre preferido es
-`ALCHEMY_ETH_RPC_URL`.
+`ALCHEMY_ETH_RPC_URL` y `ALCHEMY_AVAX_RPC_URL` siguen aceptados como override explícito
+por si se necesita una URL de Alchemy personalizada o un proveedor JSON-RPC distinto;
+tienen prioridad sobre `ALCHEMY_API_KEY` cuando ambos están presentes. `V52_RPC_URL`
+sigue aceptado como fallback legacy para Ethereum, pero el nombre preferido es
+`ALCHEMY_API_KEY`. HSK no está disponible en Alchemy, por lo que siempre requiere su
+propio `HSK_RPC_URL`.
 
-Las URLs de providers son backend-only. No deben aparecer en `VITE_*`, respuestas HTTP, logs,
-screenshots ni expedientes `.v52`.
+Las API keys y URLs de providers son backend-only. No deben aparecer en `VITE_*`,
+respuestas HTTP, logs, screenshots ni expedientes `.v52`.
 
 ## Folder ownership
 

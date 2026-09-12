@@ -104,7 +104,6 @@ def create_app() -> FastAPI:
     app.include_router(claim_audit.router)
     app.include_router(cases.router)
     app.include_router(verify.router)
-    app.include_router(cases.router)
 
     # ── Global error handler — never expose stack traces in production ─────────
     @app.exception_handler(Exception)

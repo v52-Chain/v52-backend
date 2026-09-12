@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 _REDACTED = "***REDACTED***"
 
+# Alchemy JSON-RPC URL templates. A single ALCHEMY_API_KEY is combined with the
+# network subdomain to build the authenticated endpoint, so the key never has
+# to be pasted into a full URL by hand for each chain.
+_ALCHEMY_ETH_MAINNET_URL = "https://eth-mainnet.g.alchemy.com/v2/{api_key}"
+_ALCHEMY_AVAX_MAINNET_URL = "https://avax-mainnet.g.alchemy.com/v2/{api_key}"
+_ALCHEMY_AVAX_FUJI_URL = "https://avax-fuji.g.alchemy.com/v2/{api_key}"
+
 
 class Settings(BaseSettings):
     """Runtime settings for the Vector52 backend."""
@@ -38,6 +45,15 @@ class Settings(BaseSettings):
 
     # FRANCO.md RPC configuration. The V52_* variants are accepted for
     # compatibility with earlier local work and tests.
+    #
+    # Preferred: set ALCHEMY_API_KEY alone. The backend builds the Ethereum and
+    # Avalanche RPC URLs from it using Alchemy's standard network subdomains.
+    # ALCHEMY_ETH_RPC_URL / ALCHEMY_AVAX_RPC_URL remain as an explicit override
+    # for a custom Alchemy app URL or a non-Alchemy JSON-RPC endpoint.
+    v52_alchemy_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("ALCHEMY_API_KEY", "V52_ALCHEMY_API_KEY"),
+    )
     v52_alchemy_eth_rpc_url: str = Field(
         default="",
         validation_alias=AliasChoices("ALCHEMY_ETH_RPC_URL", "V52_ALCHEMY_ETH_RPC_URL"),
@@ -120,9 +136,21 @@ class Settings(BaseSettings):
         ]
 
     @property
+    def alchemy_api_key_configured(self) -> bool:
+        return bool(self.v52_alchemy_api_key)
+
+    @property
     def alchemy_eth_rpc_url(self) -> str:
-        """Ethereum Alchemy endpoint, with legacy V52_RPC_URL fallback."""
-        return self.v52_alchemy_eth_rpc_url or self.v52_rpc_url
+        """Ethereum Alchemy endpoint.
+
+        Priority: explicit ALCHEMY_ETH_RPC_URL override, then a URL built from
+        ALCHEMY_API_KEY, then the legacy V52_RPC_URL fallback.
+        """
+        if self.v52_alchemy_eth_rpc_url:
+            return self.v52_alchemy_eth_rpc_url
+        if self.v52_alchemy_api_key:
+            return _ALCHEMY_ETH_MAINNET_URL.format(api_key=self.v52_alchemy_api_key)
+        return self.v52_rpc_url
 
     @property
     def alchemy_configured(self) -> bool:
@@ -130,7 +158,17 @@ class Settings(BaseSettings):
 
     @property
     def alchemy_avax_rpc_url(self) -> str:
-        return self.v52_alchemy_avax_rpc_url
+        """Avalanche Alchemy endpoint, built from ALCHEMY_API_KEY when not overridden."""
+        if self.v52_alchemy_avax_rpc_url:
+            return self.v52_alchemy_avax_rpc_url
+        if self.v52_alchemy_api_key:
+            template = (
+                _ALCHEMY_AVAX_FUJI_URL
+                if self.alchemy_avax_chain_id == 43113
+                else _ALCHEMY_AVAX_MAINNET_URL
+            )
+            return template.format(api_key=self.v52_alchemy_api_key)
+        return ""
 
     @property
     def alchemy_avax_configured(self) -> bool:
@@ -187,6 +225,7 @@ class Settings(BaseSettings):
             "v52_env": self.v52_env,
             "cors_origins": self.cors_origins,
             "rpc_configured": self.rpc_configured,
+            "alchemy_api_key_configured": self.alchemy_api_key_configured,
             "alchemy_configured": self.alchemy_configured,
             "alchemy_avax_configured": self.alchemy_avax_configured,
             "hsk_rpc_configured": self.hsk_rpc_configured,
@@ -202,6 +241,7 @@ class Settings(BaseSettings):
             "v52_ai_enabled": self.v52_ai_enabled,
             "v52_mongodb_database": self.v52_mongodb_database,
             "v52_rpc_url": _REDACTED if self.v52_rpc_url else "(not set)",
+            "alchemy_api_key": _REDACTED if self.v52_alchemy_api_key else "(not set)",
             "alchemy_eth_rpc_url": _REDACTED if self.alchemy_eth_rpc_url else "(not set)",
             "alchemy_avax_rpc_url": _REDACTED if self.alchemy_avax_rpc_url else "(not set)",
             "hsk_rpc_url": _REDACTED if self.hsk_rpc_url else "(not set)",
