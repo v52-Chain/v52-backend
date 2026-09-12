@@ -34,6 +34,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
 )
 logger = logging.getLogger(__name__)
+# Provider URLs may contain API keys in their path. Keep transport loggers quiet;
+# Vector52 emits its own redacted acquisition events instead.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 @asynccontextmanager

@@ -36,6 +36,13 @@ def test_redact_removes_api_key_in_url() -> None:
     assert "0123456789abcdef" not in result
 
 
+def test_redact_removes_alchemy_key_in_url() -> None:
+    url = "https://eth-mainnet.g.alchemy.com/v2/alch_exampleSecretKey123456"
+    result = redact(url)
+    assert "exampleSecretKey" not in result
+    assert "[REDACTED]" in result
+
+
 def test_redact_is_safe_on_clean_text() -> None:
     text = "Transaction 0xabc completed successfully."
     assert redact(text) == text

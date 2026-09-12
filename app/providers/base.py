@@ -23,7 +23,7 @@ _SECRET_PATTERNS = [
     re.compile(r"(?i)(token\s*=\s*)[^\s&]+"),
     re.compile(r"(?i)(Authorization:\s*)[^\s]+"),
     # Infura/Alchemy style endpoints that embed keys in the URL path
-    re.compile(r"(https?://[^/]+/v\d+/)[a-f0-9]{32,}"),
+    re.compile(r"(https?://[^/]+/v\d+/)[A-Za-z0-9_-]{16,}"),
 ]
 
 

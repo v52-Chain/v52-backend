@@ -24,13 +24,27 @@ def _settings() -> Settings:
     )
 
 
+def _unconfigured_settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        V52_ENV="development",
+        V52_RPC_URL="",
+        V52_ALCHEMY_ETH_RPC_URL="",
+        V52_GRAPH_ENDPOINT="",
+    )
+
+
 def test_wallet_flow_rejects_invalid_address(client) -> None:
     response = client.get("/v1/wallets/1/not-a-wallet/flow")
     assert response.status_code == 422
 
 
 def test_wallet_flow_requires_alchemy(client) -> None:
-    response = client.get(f"/v1/wallets/1/{WALLET}/flow")
+    app.dependency_overrides[get_settings] = _unconfigured_settings
+    try:
+        response = client.get(f"/v1/wallets/1/{WALLET}/flow")
+    finally:
+        app.dependency_overrides.clear()
     assert response.status_code == 503
     assert "V52_ALCHEMY_ETH_RPC_URL" in response.json()["detail"]
 
