@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: vector52-backend
+    runtime: python
+    runtimeVersion: "3.11"
+    buildCommand: pip install -e .
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: standard
+    envVars:
+      - key: V52_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: PIP_DEFAULT_TIMEOUT
+        value: "100"
+      # ── RPC Configuration ──────────────────────────────────────────
+      # Set ALCHEMY_API_KEY in Render environment variables (keep it secret)
+      - key: V52_CORS_ORIGINS
+        value: "https://vector52.vercel.app,https://app.vector52.xyz"
+      - key: V52_PUBLIC_ORIGIN
+        value: "https://vector52.vercel.app"
+      # ── The Graph ──────────────────────────────────────────────────
+      # Set V52_GRAPH_API_KEY in Render environment variables (keep it secret)
+      - key: V52_GRAPH_ENDPOINT
+        value: "https://gateway.thegraph.com/api/{api_key}/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV"
+      # ── RPC Timeouts ───────────────────────────────────────────────
+      - key: RPC_TIMEOUT_MS
+        value: "15000"
+      - key: RPC_MAX_RETRIES
+        value: "3"
+      # ── Storage ────────────────────────────────────────────────────
+      - key: V52_STORAGE_BACKEND
+        value: "file"
+      - key: V52_DATA_DIR
+        value: "/tmp/evidence_vault"
+      # ── Optional: Disable AI & x402 for MVP ────────────────────────
+      - key: V52_AI_ENABLED
+        value: "false"
+      - key: V52_X402_ENABLED
+        value: "false"
+      - key: V52_CACHE_ENABLED
+        value: "false"
+
+    # Health check
+    healthCheckPath: /healthz
+    healthCheckInterval: 30
+
+    # Auto-scale settings
+    autoDeploy: true
