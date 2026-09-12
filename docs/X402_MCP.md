@@ -1,6 +1,6 @@
-# Guía de Integración x402 — Servidor MCP y Frontend (PWA)
+# Guía de Integración x402 — Servidor MCP
 
-> Este manual es la contraparte práctica de [`FUNCIONAMIENTO.md` §13](./FUNCIONAMIENTO.md#13-modelo-de-acceso-dual-humanos-siwe-vs-agentes-artificiales-x402) y [`API.md` §3.13–3.14](./API.md#313-canal-de-agentes-e-ias-con-x402-m2m). Está escrito para quien va a **consumir** el canal x402 de Vector52 desde un servidor MCP (agente/IA) o desde el frontend (PWA), no para quien mantiene el backend.
+> Este manual es la contraparte práctica de [`FUNCIONAMIENTO.md` §13](./FUNCIONAMIENTO.md#13-modelo-de-acceso-dual-humanos-siwe-vs-agentes-artificiales-x402) y [`API.md` §3.13–3.14](./API.md#313-canal-de-agentes-e-ias-con-x402-m2m). Está escrito para quien va a consumir el canal x402 de Vector52 desde un servidor MCP (agente/IA), no para quien mantiene el backend. La integración del frontend PWA está documentada en [`X402_FRONTEND.md`](./X402_FRONTEND.md).
 
 ---
 
@@ -25,7 +25,7 @@ No hay que tocarlas — se listan aquí para referencia al depurar:
 | Variable | Rol |
 |---|---|
 | `V52_X402_ENABLED` | Interruptor maestro del canal de pago. |
-| `V52_X402_FACILITATOR_URL` | URL del facilitador (OpenZeppelin Relayer + plugin x402, expuesto vía ngrok en desarrollo). |
+| `V52_X402_FACILITATOR_URL` | URL base del facilitador, expuesta vía ngrok en desarrollo. **⚠️ Formato verificado 2026-09-12: el facilitador real (`x402-facilitator-local`) expone rutas PLANAS `/supported`, `/verify`, `/settle` directamente sobre el dominio ngrok — NO el prefijo `/api/v1/plugins/x402/call/*` que documentaba `v52-onchain/x402-test/README.md` para el plugin OpenZeppelin Relayer.** Agregar ese prefijo produce `404` en todas las llamadas. Ver §5.2 para la verificación completa. |
 | `V52_X402_FACILITATOR_API_KEY` | Bearer token que el backend usa para autenticarse contra el facilitador (`/supported`, `/verify`, `/settle`). **Nunca se expone al cliente MCP ni al frontend** — es un secreto servidor-a-servidor. |
 | `V52_X402_PAY_TO` | Address que recibe el pago (wallet del proyecto). |
 | `V52_X402_NETWORK` | Red CAIP-2, hoy `eip155:43113` (Avalanche Fuji testnet). |
@@ -256,7 +256,7 @@ Se verificó la transacción directamente contra el RPC de Avalanche Fuji (`get_
 
 Esto cierra la verificación: el ciclo x402 completo (`402` → firma → `verify` → `settle` → `200`) funciona de punta a punta contra infraestructura real, no solo contra un mock.
 
-### 5.1 Mejora aplicada: 503 claro en vez de 500 opaco
+### 5.2 Mejora aplicada: 503 claro en vez de 500 opaco
 
 Se detectó que, si el facilitador está inalcanzable, el middleware de `x402` (`x402ResourceServer.initialize()`) lanza una excepción sin capturar que llegaba al cliente como `500 Internal Server Error` genérico — indistinguible de un bug real del backend. Se agregó `FacilitatorFailoverMiddleware` en `app/payments/x402.py` que traduce ese caso puntual en:
 
@@ -268,6 +268,39 @@ Se detectó que, si el facilitador está inalcanzable, el middleware de `x402` (
 ```
 
 con status `503`. **El servidor MCP y el frontend deben tratar este `503` como retryable** (backoff y reintento), a diferencia de un `402` (que requiere una firma nueva) o un `500` genuino (bug, no reintentar sin investigar).
+
+### 5.3 Tercera verificación (2026-09-12): ruta correcta del facilitador + pago real repetido
+
+Se repitió el ciclo completo contra el facilitador real usando la wallet de prueba del equipo (`0x0f26475928053737C3CCb143Ef9B28F8eDab04C7`, 1.5 AVAX + ~20 USDC en Fuji) para confirmar dos cosas: (1) el formato correcto de `V52_X402_FACILITATOR_URL` y (2) que el ciclo sigue funcionando de punta a punta con una wallet fondeada distinta a la de la verificación original de §5.1.
+
+**Hallazgo — formato de URL corregido.** El facilitador real que responde detrás del túnel ngrok actual se identifica a sí mismo como `x402-facilitator-local` (no el plugin OpenZeppelin Relayer usado en `v52-onchain/x402-test`) y expone rutas **planas**:
+
+```bash
+curl https://<dominio-ngrok>/supported   # 200 OK
+curl https://<dominio-ngrok>/verify      # 200 OK (GET muestra el schema esperado; el uso real es POST)
+curl https://<dominio-ngrok>/settle      # 200 OK (idem)
+```
+
+Probar con el prefijo documentado en `v52-onchain/x402-test/README.md` (`/api/v1/plugins/x402/call/supported`, etc.) devuelve `404` — ese prefijo es específico del plugin OpenZeppelin Relayer y no aplica a este facilitador. **`V52_X402_FACILITATOR_URL` debe ser el dominio ngrok desnudo, sin sufijo.**
+
+**Resultado del ciclo completo:**
+
+1. `GET /v1/agent/capabilities` → `200`, `ready: true`, sin warnings.
+2. `POST /v1/agent/investigations/wallet-flow` sin pago → `402` con el challenge decodificado confirmando `network: eip155:43113`, `asset: 0x5425...Bc65`, `amount: 1000`, `payTo` igual al `V52_X402_PAY_TO` del `.env`.
+3. Cliente Python (`x402HttpxClient`, mismo patrón de §4.3) firma automáticamente y reintenta → **`200 OK`**.
+4. Header `Payment-Response` decodificado:
+   ```json
+   {
+     "success": true,
+     "payer": "0x0f26475928053737C3CCb143Ef9B28F8eDab04C7",
+     "transaction": "0x3d3a286c5cc3fcde20a59448a5e050b5e6c646652daf500ad47be1c9047652db",
+     "network": "eip155:43113"
+   }
+   ```
+5. Verificación independiente contra RPC de Avalanche Fuji (`eth_getTransactionReceipt`): `status: 0x1` (éxito), bloque `58338308`, 2 logs emitidos por el contrato USDC.
+6. Balance de la wallet compradora: `19.994 → 19.993` USDC — exactamente `1000` unidades atómicas cobradas.
+
+Esto reconfirma end-to-end el mismo resultado de §5.1 con una sesión de facilitador distinta, y corrige la documentación de la URL para que el próximo integrante (MCP o frontend) no pierda tiempo con el prefijo incorrecto.
 
 ---
 
@@ -284,65 +317,7 @@ con status `503`. **El servidor MCP y el frontend deben tratar este `503` como r
 
 ---
 
-## 7. Guía de integración — Frontend (PWA)
-
-### 7.1 Estado actual: el canal humano **no usa x402**
-
-Para el usuario humano en el navegador, `POST /v1/web/investigations/wallet-flow` usa sesión Bearer vía **Sign-In with Ethereum (SIWE)**, no x402 (ver `FUNCIONAMIENTO.md` §13.2). Esto es intencional: pedirle una firma de pago on-chain por cada clic destruiría la UX. El frontend de hoy **no necesita** integrar ningún cliente x402 para ese flujo.
-
-Nada que implementar aquí más allá de lo ya descrito en `API.md` para `/v1/auth/wallet/*` y `/v1/web/investigations/wallet-flow`.
-
-### 7.2 Dónde SÍ aparecerá x402 en el frontend (Nivel 3, pendiente de implementar en backend)
-
-La matriz de `API.md` §3.14 y `FUNCIONAMIENTO.md` §13.5 documenta que `POST /v1/paid/claim-audit` (deep/IA), `POST /v1/cases/{case_id}/anchor` y `GET /v1/cases/{case_id}/package` deben cobrar **tanto a humanos como a agentes** vía x402 — pero hoy **no está implementado en el backend** (`claim_audit.py` y `cases.py` no tienen `RouteConfig` en `x402.py`; no existe endpoint `anchor`). Cuando se implemente el lado servidor (siguiendo el patrón de §8), el frontend deberá:
-
-1. Llamar el endpoint normalmente.
-2. Si recibe `402`, decodificar `Payment-Required` (igual que el agente).
-3. Pedirle a la wallet conectada del usuario (vía `wagmi`/`viem`, MetaMask, etc.) que firme la autorización EIP-712 `exact` — **no** una clave privada cruda como en el servidor MCP, sino `walletClient.signTypedData(...)` del proveedor inyectado.
-4. Reintentar con el header `Payment-Signature`.
-
-Boceto (para cuando el backend exponga esos endpoints con x402):
-
-```typescript
-// frontend/src/lib/x402Browser.ts
-import { wrapFetchWithPayment } from "@x402/fetch";
-import { x402Client } from "@x402/core/client";
-import { ExactEvmScheme } from "@x402/evm/exact/client";
-import type { WalletClient } from "viem";
-
-export function createBrowserX402Fetch(walletClient: WalletClient) {
-  const client = new x402Client();
-  // spendControls habilitado en el navegador: limitar monto máximo por pago
-  // para que un sitio comprometido no pueda drenar la wallet del usuario.
-  client.spendControls = { allowedAssets: true, maxAmountPerPayment: "10000" };
-
-  const browserSigner = {
-    address: walletClient.account!.address,
-    signTypedData: (domain: unknown, types: unknown, primaryType: string, message: unknown) =>
-      walletClient.signTypedData({
-        account: walletClient.account!,
-        domain: domain as never,
-        types: types as never,
-        primaryType: primaryType as never,
-        message: message as never,
-      }),
-  };
-
-  client.register("eip155:43113", new ExactEvmScheme(browserSigner as never));
-  return wrapFetchWithPayment(fetch, client);
-}
-```
-
-> ⚠️ A diferencia del servidor MCP, en el navegador **siempre** hay que dejar `spendControls` activo con un tope (`maxAmountPerPayment`) — nunca `false`. El servidor MCP corre en un entorno controlado por el propio proyecto; el frontend corre en la máquina del usuario final con su wallet real conectada.
-
-### 7.3 Seguridad para el frontend
-
-- Nunca envíes `V52_X402_FACILITATOR_API_KEY` al navegador — no existe ninguna razón para que el frontend lo necesite; solo el backend habla con el facilitador.
-- Todo pago x402 desde el navegador debe pasar por la wallet conectada del usuario (firma explícita), nunca por una clave privada embebida en el bundle del frontend.
-
----
-
-## 8. Cómo extender el patrón a un nuevo endpoint x402 (Nivel 3)
+## 7. Cómo extender el patrón a un nuevo endpoint x402 (Nivel 3)
 
 Cuando se implemente `claim-audit`/`anchor`/`package` bajo x402, el cambio en `app/payments/x402.py` es agregar una entrada más al diccionario `routes` de `configure_x402` — el middleware ya soporta múltiples rutas:
 
@@ -373,7 +348,7 @@ No hace falta duplicar `BearerAuthProvider` ni `x402ResourceServer` — son comp
 
 ---
 
-## 9. Probar localmente sin el facilitador real
+## 8. Probar localmente sin el facilitador real
 
 Cuando el túnel ngrok/relayer no esté disponible (como durante esta verificación), se puede levantar un facilitador mock mínimo para validar la integración del cliente (MCP o frontend) contra el backend real:
 
@@ -419,7 +394,7 @@ Con esto, cualquier cliente (el servidor MCP en TS/Python, o el fetch del fronte
 
 ---
 
-## 10. Checklist de integración
+## 9. Checklist de integración
 
 - [ ] El cliente llama `GET /v1/agent/capabilities` antes de intentar pagar.
 - [ ] El cliente sabe decodificar el header `Payment-Required` (base64 → JSON).
