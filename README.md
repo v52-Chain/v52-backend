@@ -6,18 +6,21 @@
 **Initial branch:** `feat/saul-fastapi-foundation`  
 **Status:** `IN PROGRESS` from 8 September
 
-## Initial implementation output
+## Estado implementado
 
-- `pyproject.toml` with pinned/controlled dependencies;
+- `pyproject.toml` con dependencias fijadas;
 - `app/main.py`;
 - `GET /healthz`;
-- typed stub `POST /v1/claim-audit`;
-- `config.py` reading environment variables;
-- minimal Ethereum RPC and The Graph connectivity check;
-- first API/provider tests.
-- append-only Evidence Vault and repository abstraction;
-- MongoDB adapter only after the file-backed P0 flow works;
-- Upstash Redis only after a measured cache need.
+- `POST /v1/claim-audit`;
+- endpoints de casos, evidencia, paquete y verificación;
+- provider Ethereum RPC y provider The Graph;
+- Evidence Vault con SHA-256;
+- modelos y módulos iniciales de protocol, contribution, claims y packaging;
+- redacción de credenciales en errores de transporte;
+- CORS explícito mediante `V52_CORS_ORIGINS`;
+- pruebas unitarias (incluye llamadas reales a RPC/The Graph, sin mocks; ver `docs/FUNCIONAMIENTO.md` §12).
+
+La suite fue verificada el 12 de septiembre: **72 tests pasaron** (4 adicionales del gateway de The Graph se omiten automáticamente si `V52_GRAPH_API_KEY` no está configurada). Esto valida adquisición, modelos, configuración, CORS y evidencia; no prueba un Claim Audit forense completo. `UniswapV3Resolver`, Contribution Analysis, predicados y auditor todavía son stubs, y el endpoint público devuelve `UNKNOWN` de forma intencional. El endpoint `GET /v1/wallets/{chain_id}/{address}/flow` (Alchemy Transfers API) fue retirado del alcance de este backend.
 
 ## Folder ownership
 
@@ -128,12 +131,19 @@ copy .env.example .env
 Edita el archivo `.env` según tus necesidades:
 ```env
 V52_ENV=development
+V52_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 V52_RPC_URL=https://your-ethereum-rpc-endpoint   # Opcional en dev, requerido en prod
 V52_GRAPH_ENDPOINT=https://gateway.thegraph.com/api/{api_key}/subgraphs/id/...
 V52_GRAPH_API_KEY=tu_api_key_aqui
 V52_DATA_DIR=./evidence_vault
 V52_STORAGE_BACKEND=file
 V52_CACHE_ENABLED=false
+```
+
+Para conectar un frontend desplegado en producción, configura una allowlist exacta (nunca uses `*` ni expongas URLs de RPC/The Graph al navegador):
+```env
+V52_ENV=production
+V52_CORS_ORIGINS=https://vector52.vercel.app
 ```
 
 ---

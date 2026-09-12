@@ -20,7 +20,7 @@ Documento en profundidad que aborda los fundamentos técnicos del backend:
 - Pipeline de Auditoría de 7 etapas cronometradas (`AuditPipeline`).
 - Estructura forense del contenedor comprimido `.v52.zip` y `manifest.json`.
 - Puntos de extensión y contratos de integración para Jhamil y Omar.
-- Fixtures reales de Ethereum Mainnet (`fixtures/known_case/`) y suite de 69 pruebas automáticas.
+- Fixtures reales de Ethereum Mainnet (`fixtures/known_case/`) y suite de 72 pruebas automáticas.
 
 ### 2. [Referencia Completa de la API REST](./API.md)
 Manual integral de consumo e integración de la API:

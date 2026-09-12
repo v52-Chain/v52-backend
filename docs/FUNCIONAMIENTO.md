@@ -3,7 +3,7 @@
 > **Versión del Sistema:** 0.1.0  
 > **Área:** Backend / Evidence Engine  
 > **Lema Técnico:** *"Don't just trace the money. Prove the claim."*  
-> **Estado:** P0 Implementado y Verificado (69 pruebas superadas)  
+> **Estado:** P0 Implementado y Verificado (72 pruebas superadas)  
 
 ---
 
@@ -110,7 +110,7 @@ backend/
 │       ├── the_graph.json    # Respuesta The Graph completa (L1)
 │       ├── token_metadata.json# Metadatos verificados de USDC y WETH
 │       └── expected_result.json# Resultado esperado tras decodificación
-└── tests/                    # Suite de pruebas unitarias y de integración (69 tests)
+└── tests/                    # Suite de pruebas unitarias y de integración (72 tests)
     ├── conftest.py           # Fixtures de FastAPI TestClient y carga de .env para pruebas en vivo
     ├── test_claim_audit.py   # Pruebas del endpoint /v1/claim-audit y pipeline (incluye un caso real end-to-end)
     ├── test_erc20_decoder.py # Pruebas del decodificador ERC-20 con fixtures reales
@@ -572,7 +572,7 @@ El repositorio incluye un caso de auditoría real completo de Ethereum Mainnet d
 - `token_metadata.json`: Metadatos comprobados de tokens USDC (6 decimales) y WETH (18 decimales).
 - `expected_result.json`: Salida de transferencias decodificadas esperada para validar la fidelidad del decodificador.
 
-### Cobertura de la Suite de Pruebas (69 pruebas, todas passing con `V52_GRAPH_API_KEY` configurada; 4 se omiten sin ella):
+### Cobertura de la Suite de Pruebas (72 pruebas, todas passing con `V52_GRAPH_API_KEY` configurada; 4 se omiten sin ella):
 - **`test_erc20_decoder.py`:** Verifica la decodificación cronológica en orden de `logIndex`, manejo de metadatos faltantes, rechazo de topics malformados o padding inválido, preservación exacta de `uint256` máximo ($(2^{256}-1)$) e interpolación exacta de decimales sin flotantes.
 - **`test_providers.py`:** Ejecuta llamadas reales al cliente JSON-RPC y a The Graph GraphQL contra Ethereum Mainnet, saneamiento de credenciales con `redact()` e interpolación de `{api_key}` en URLs de subgrafo. Las pruebas del gateway de The Graph se omiten si `V52_GRAPH_API_KEY` no está configurada.
 - **`test_evidence_vault.py`:** Integridad append-only del almacenamiento, prohibición de sobreescritura y sidecars `.sha256`.
