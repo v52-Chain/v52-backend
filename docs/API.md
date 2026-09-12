@@ -1060,6 +1060,53 @@ Vector52 establece una política de seguridad y monetización diferenciada para 
 
 ---
 
+### 3.15 Agent Access — Estado de Integración MCP (para el Frontend)
+
+> Ver `CONTRATO-INTEGRACION.md` ("Interfaz Agent Access preparada para MCP"). Estos endpoints son consumidos por la **PWA**, no por un servidor MCP real — `v52-mcp` es un repositorio/servicio independiente que hoy **no está conectado**. La PWA nunca habla directamente con un proceso MCP privilegiado; consulta estos endpoints del backend para reflejar el estado honestamente.
+
+**Regla de honestidad:** mientras `V52_MCP_SERVER_URL` no esté configurada y verificada, toda respuesta reporta `UNAVAILABLE` (o `UNKNOWN` si la URL está puesta pero sin handshake real). Nunca se transforma un mock en `READY`.
+
+#### `GET /v1/integrations/mcp/status`
+
+```json
+{
+  "state": "UNAVAILABLE",
+  "server_configured": false,
+  "reason": "v52-mcp is a separate service that is not connected to this backend yet.",
+  "warnings": []
+}
+```
+
+#### `GET /v1/integrations/mcp/tools`
+
+Catálogo documentado (P0) de tools que existirán cuando `v52-mcp` esté conectado. Con el canal desconectado devuelve `tools: []` y `state: UNAVAILABLE`; con `V52_MCP_SERVER_URL` configurada (pero sin handshake verificado) devuelve el catálogo con `state: UNKNOWN`:
+
+```json
+{
+  "state": "UNAVAILABLE",
+  "tools": [],
+  "reason": "v52-mcp is a separate service that is not connected to this backend yet."
+}
+```
+
+Catálogo documentado (`CONTRATO-INTEGRACION.md` "MCP mapping"): `case_status`, `evidence_get`, `edge_explain`, `package_verify`, `anchor_lookup` (gratuitos) y `claim_audit` (x402).
+
+#### `POST /v1/agent-jobs`
+
+Siempre responde `503` mientras `v52-mcp` no esté conectado — **nunca fabrica un job falso**:
+
+```json
+{
+  "detail": "v52-mcp is a separate service that is not connected to this backend yet. See docs/ARQUITECTURA-REPOSITORIOS.md and CONTRATO-INTEGRACION.md."
+}
+```
+
+#### `GET /v1/agent-jobs/{job_id}`
+
+Siempre responde `404`: ningún job puede existir mientras `POST /v1/agent-jobs` no crea ninguno.
+
+---
+
 ## 4. Casos de Error y Validaciones de Entrada
 
 La API implementa validaciones estrictas en tiempo de análisis de esquemas:

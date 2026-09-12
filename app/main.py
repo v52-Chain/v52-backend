@@ -26,7 +26,18 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import access, agent, audits, cases, claim_audit, health, providers, rpc, verify
+from app.api import (
+    access,
+    agent,
+    audits,
+    cases,
+    claim_audit,
+    health,
+    integrations,
+    providers,
+    rpc,
+    verify,
+)
 from app.config import get_settings
 from app.payments.x402 import configure_x402
 
@@ -119,6 +130,7 @@ def create_app() -> FastAPI:
     app.include_router(verify.router)
     app.include_router(access.router)
     app.include_router(agent.router)
+    app.include_router(integrations.router)
 
     # ── x402 Payment channel ──────────────────────────────────────────────────
     configure_x402(app, settings)

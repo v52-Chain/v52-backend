@@ -131,6 +131,16 @@ class Settings(BaseSettings):
     )
     v52_x402_wallet_flow_price: str = Field(default="1000", alias="V52_X402_WALLET_FLOW_PRICE")
 
+    # MCP Agent Access integration (optional). Empty by default: v52-mcp is a
+    # separate repository/process not yet connected to this backend. Until a
+    # real URL is configured AND verified reachable, /v1/integrations/mcp/*
+    # must report UNAVAILABLE honestly — never a mock promoted to READY.
+    v52_mcp_server_url: str = Field(default="", alias="V52_MCP_SERVER_URL")
+
+    @property
+    def mcp_integration_configured(self) -> bool:
+        return bool(self.v52_mcp_server_url)
+
     @property
     def is_production(self) -> bool:
         return self.v52_env.lower() == "production"
@@ -266,6 +276,7 @@ class Settings(BaseSettings):
             "v52_ai_enabled": self.v52_ai_enabled,
             "v52_x402_enabled": self.v52_x402_enabled,
             "v52_x402_network": self.v52_x402_network,
+            "mcp_integration_configured": self.mcp_integration_configured,
             "v52_mongodb_database": self.v52_mongodb_database,
             "v52_rpc_url": _REDACTED if self.v52_rpc_url else "(not set)",
             "alchemy_api_key": _REDACTED if self.v52_alchemy_api_key else "(not set)",
@@ -281,6 +292,7 @@ class Settings(BaseSettings):
             "v52_upstash_redis_rest_token": (
                 _REDACTED if self.v52_upstash_redis_rest_token else "(not set)"
             ),
+            "v52_mcp_server_url": _REDACTED if self.v52_mcp_server_url else "(not set)",
         }
 
 
