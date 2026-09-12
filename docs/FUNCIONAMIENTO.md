@@ -69,9 +69,15 @@ backend/
 │   ├── config.py             # Configuración Pydantic Settings con safe_repr()
 │   ├── api/                  # Capa de controladores HTTP REST
 │   │   ├── health.py         # GET /healthz (liveness probe)
+│   │   ├── providers.py       # GET /v1/providers/status (estado de RPC/Graph) — FRANCO
+│   │   ├── rpc.py            # GET /v1/rpc/{transactions,receipts}/{chain}/{tx_hash} — FRANCO
+│   │   ├── audits.py         # POST /v1/audits, GET /v1/audits/{job_id} — FRANCO
 │   │   ├── claim_audit.py    # POST /v1/claim-audit (inicia auditoría completa)
 │   │   ├── cases.py          # GET /v1/cases/{id}, /evidence, /package
-│   │   └── verify.py         # POST /v1/verify (audita paquetes .v52.zip)
+│   │   ├── verify.py         # POST /v1/verify (audita paquetes .v52.zip)
+│   │   ├── access.py         # Autenticación con billetera
+│   │   ├── agent.py          # Rutas del agente
+│   │   └── wallet_flow.py    # Funciones de flujo de billetera (sin router)
 │   ├── claims/               # Módulos de compilación y auditoría de reclamos
 │   │   ├── compiler.py       # Descompone el reclamo en predicados formales
 │   │   ├── predicates.py     # Evaluación lógica de predicados contra evidencia
@@ -87,7 +93,9 @@ backend/
 │   │   ├── evidence.py       # EvidenceRecord, AuthorityLevel, EvidenceStatus
 │   │   ├── protocol.py       # ProtocolAction, SwapEvent, TokenInfo
 │   │   ├── transfer.py       # DecodedTransfer, TokenMetadata (Transferencias ERC-20 deterministas)
-│   │   └── verdict.py        # Verdict Enum (5 estados posibles)
+│   │   ├── verdict.py        # Verdict Enum (5 estados posibles)
+│   │   ├── access.py         # Modelos de autenticación
+│   │   └── wallet_flow.py    # WalletFlowResponse, WalletFlowLimits
 │   ├── orchestration/        # Orquestación de pipelines
 │   │   └── audit_pipeline.py # Pipeline secuencial de 7 etapas con medición de tiempos
 │   ├── packaging/            # Generación de paquetes forenses
@@ -99,7 +107,12 @@ backend/
 │   ├── providers/            # Adaptadores de comunicación externa
 │   │   ├── base.py           # BaseProvider abstracto y función de saneamiento redact()
 │   │   ├── ethereum_rpc.py   # Cliente JSON-RPC (eth_getTransactionByHash, etc.)
-│   │   └── the_graph.py      # Cliente GraphQL con extracción de _meta e interpolación {api_key}
+│   │   ├── the_graph.py      # Cliente GraphQL con extracción de _meta e interpolación {api_key}
+│   │   └── alchemy_transfers.py # Cliente Alchemy Transfers API (flujos de billetera)
+│   ├── payments/             # Procesamiento de pagos
+│   │   └── x402.py           # Configuración de canal x402 (HTTP 402 Payment Required)
+│   ├── security/             # Seguridad y gestión de sesiones
+│   │   └── wallet_sessions.py # Gestión de sesiones de billetera autenticadas
 │   └── storage/              # Capa de almacenamiento y persistencia
 │       ├── case_repository.py# Interfaz CaseRepository y adaptador FileCaseRepository
 │       └── evidence_vault.py # Bóveda de almacenamiento append-only con SHA-256 sidecars
@@ -110,13 +123,18 @@ backend/
 │       ├── the_graph.json    # Respuesta The Graph completa (L1)
 │       ├── token_metadata.json# Metadatos verificados de USDC y WETH
 │       └── expected_result.json# Resultado esperado tras decodificación
-└── tests/                    # Suite de pruebas unitarias y de integración (72 tests)
+└── tests/                    # Suite de pruebas unitarias y de integración (91 tests passing, 4 skipped)
     ├── conftest.py           # Fixtures de FastAPI TestClient y carga de .env para pruebas en vivo
-    ├── test_claim_audit.py   # Pruebas del endpoint /v1/claim-audit y pipeline (incluye un caso real end-to-end)
+    ├── test_claim_audit.py   # Pruebas del endpoint /v1/claim-audit y pipeline
+    ├── test_config.py        # Pruebas de configuración (ALCHEMY_API_KEY, RPC, CORS)
     ├── test_erc20_decoder.py # Pruebas del decodificador ERC-20 con fixtures reales
     ├── test_evidence_vault.py# Pruebas de inmutabilidad y sidecars del vault
     ├── test_health.py        # Pruebas del endpoint /healthz
-    └── test_providers.py     # Pruebas en vivo de Ethereum RPC y The Graph (sin mocks)
+    ├── test_providers.py     # Pruebas en vivo de Ethereum RPC y The Graph (sin mocks)
+    ├── test_reconciliation.py# Pruebas de reconciliación Graph ↔ RPC
+    ├── test_rpc_api.py       # Pruebas de endpoints RPC y audits — FRANCO
+    ├── test_access_channels.py # Pruebas de autenticación con billetera
+    └── test_wallet_flow.py   # Pruebas de flujo de billetera y wallet sessions
 ```
 
 ---
@@ -518,13 +536,42 @@ Toda la configuración se gestiona mediante Pydantic Settings y se documenta en 
 | Variable | Tipo | Valor por Defecto | Obligatoria en Producción | Descripción |
 | :--- | :--- | :--- | :--- | :--- |
 | `V52_ENV` | `str` | `development` | Sí | Entorno de ejecución (`development`, `production`). |
-| `V52_RPC_URL` | `str` | `""` | Sí | URL completa del endpoint Ethereum JSON-RPC. |
+| `V52_CORS_ORIGINS` | `str` | `""` | No | Lista separada por comas de orígenes CORS permitidos en producción. |
+| `V52_PUBLIC_ORIGIN` | `str` | `http://localhost:5173` | No | Origen público del frontend para redirecciones e integración. |
+| **RPC Configuration (Alchemy)** |
+| `ALCHEMY_API_KEY` | `str` | `""` | Sí (recomendado) | Clave única de Alchemy para construir automáticamente URLs de Ethereum y Avalanche. |
+| `ALCHEMY_ETH_RPC_URL` | `str` | `""` | Sí (alternativa) | URL completa del endpoint Ethereum JSON-RPC de Alchemy (sobrescribe `ALCHEMY_API_KEY`). |
+| `ALCHEMY_AVAX_RPC_URL` | `str` | `""` | No | URL del endpoint Avalanche C-Chain (sobrescribe construcción desde `ALCHEMY_API_KEY`). |
+| `ALCHEMY_ETH_CHAIN_ID` | `int` | `1` | No | Chain ID esperado para Ethereum (validación). |
+| `ALCHEMY_AVAX_CHAIN_ID` | `int` | `43114` | No | Chain ID para Avalanche (43114 = Mainnet, 43113 = Fuji Testnet). |
+| `HSK_RPC_URL` | `str` | `""` | No | Endpoint RPC independiente para HSK (no disponible en Alchemy). |
+| `HSK_CHAIN_ID` | `int` | `177` | No | Chain ID para HSK (validación). |
+| `RPC_TIMEOUT_MS` | `int` | `12000` | No | Timeout en milisegundos para llamadas RPC. |
+| `RPC_MAX_RETRIES` | `int` | `2` | No | Número máximo de reintentos en caso de fallo transitorio. |
+| **The Graph Configuration** |
 | `V52_GRAPH_ENDPOINT` | `str` | `https://gateway.thegraph.com/api/{api_key}/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV` | Sí | URL del subgrafo de The Graph para Uniswap V3 con soporte de `{api_key}`. |
-| `V52_GRAPH_API_KEY` | `str` | `""` | No | API Key de The Graph Studio interpolada en la URL y Authorization header. |
+| `V52_GRAPH_API_KEY` | `str` | `""` | No | API Key de The Graph Studio interpolada en la URL. |
+| **Storage & Vault** |
 | `V52_DATA_DIR` | `str` | `./evidence_vault` | No | Ruta del sistema de archivos donde opera el Evidence Vault. |
 | `V52_STORAGE_BACKEND`| `str` | `file` | No | Adaptador de almacenamiento (`file`, `mongo`). |
 | `V52_MONGODB_URI` | `str` | `""` | No (P1) | URI de conexión para MongoDB (Fase P1). |
-| `V52_AI_ENABLED` | `bool`| `False` | No | Bandera para habilitar o deshabilitar resúmenes L5. |
+| `V52_MONGODB_DATABASE` | `str` | `vector52` | No | Nombre de la base de datos MongoDB. |
+| **Caching (Optional)** |
+| `V52_CACHE_ENABLED` | `bool` | `False` | No | Habilita caché mediante Upstash Redis. |
+| `V52_UPSTASH_REDIS_REST_URL` | `str` | `""` | No | URL REST del servicio Upstash Redis. |
+| `V52_UPSTASH_REDIS_REST_TOKEN` | `str` | `""` | No | Token de autenticación para Upstash Redis. |
+| `V52_CACHE_TTL_SECONDS` | `int` | `120` | No | Tiempo de vida de elementos en caché (segundos). |
+| **AI (Non-Authoritative, L5)** |
+| `V52_AI_ENABLED` | `bool`| `False` | No | Bandera para habilitar resúmenes L5 explicativos generados por IA. |
+| `V52_AI_API_KEY` | `str` | `""` | No | Clave de API para servicio de IA. |
+| **x402 Payment Channel (Optional)** |
+| `V52_X402_ENABLED` | `bool` | `False` | No | Habilita canal de pago x402. |
+| `V52_X402_FACILITATOR_URL` | `str` | `""` | No | URL del facilitador x402. |
+| `V52_X402_FACILITATOR_API_KEY` | `str` | `""` | No | API Key del facilitador x402. |
+| `V52_X402_PAY_TO` | `str` | `""` | No | Dirección de pago (recibidor). |
+| `V52_X402_NETWORK` | `str` | `eip155:43113` | No | Red EIP-155 para x402 (Avalanche Fuji por defecto). |
+| `V52_X402_ASSET` | `str` | `0x5425890298aed601595a70AB815c96711a31Bc65` | No | Dirección de contrato del token de pago x402. |
+| `V52_X402_WALLET_FLOW_PRICE` | `str` | `1000` | No | Precio en tokens para el endpoint de wallet flow. |
 
 ### Medidas de Seguridad Implementadas:
 - **`safe_repr()`:** Al arrancar el servidor en `main.py`, se registran en los logs los valores de configuración mediante `settings.safe_repr()`, el cual reemplaza todas las URLs sensibles, claves API y tokens por la cadena `***REDACTED***`.
@@ -572,7 +619,7 @@ El repositorio incluye un caso de auditoría real completo de Ethereum Mainnet d
 - `token_metadata.json`: Metadatos comprobados de tokens USDC (6 decimales) y WETH (18 decimales).
 - `expected_result.json`: Salida de transferencias decodificadas esperada para validar la fidelidad del decodificador.
 
-### Cobertura de la Suite de Pruebas (72 pruebas, todas passing con `V52_GRAPH_API_KEY` configurada; 4 se omiten sin ella):
+### Cobertura de la Suite de Pruebas (91 pruebas passing, 4 skipped cuando `V52_GRAPH_API_KEY` no está configurada):
 - **`test_erc20_decoder.py`:** Verifica la decodificación cronológica en orden de `logIndex`, manejo de metadatos faltantes, rechazo de topics malformados o padding inválido, preservación exacta de `uint256` máximo ($(2^{256}-1)$) e interpolación exacta de decimales sin flotantes.
 - **`test_providers.py`:** Ejecuta llamadas reales al cliente JSON-RPC y a The Graph GraphQL contra Ethereum Mainnet, saneamiento de credenciales con `redact()` e interpolación de `{api_key}` en URLs de subgrafo. Las pruebas del gateway de The Graph se omiten si `V52_GRAPH_API_KEY` no está configurada.
 - **`test_evidence_vault.py`:** Integridad append-only del almacenamiento, prohibición de sobreescritura y sidecars `.sha256`.

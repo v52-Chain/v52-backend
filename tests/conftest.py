@@ -16,7 +16,7 @@ import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-# Load real environment from backend .env
+# Load environment from backend .env if it exists
 _env_file = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_env_file)
 

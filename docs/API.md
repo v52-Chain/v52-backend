@@ -16,16 +16,23 @@
    - 1.3 [Política de CORS](#13-política-de-cors)
    - 1.4 [Códigos de Estado HTTP](#14-códigos-de-estado-http)
    - 1.5 [Estructura de Errores](#15-estructura-de-errores)
+   - 1.6 [Configuración RPC y The Graph](#16-configuración-rpc-y-the-graph)
 2. [Diccionario de Esquemas y Enumeraciones](#2-diccionario-de-esquemas-y-enumeraciones)
    - 2.1 [Enumeraciones (Enums)](#21-enumeraciones-enums)
    - 2.2 [Modelos de Petición y Respuesta](#22-modelos-de-petición-y-respuesta)
 3. [Catálogo Detallado de Endpoints](#3-catálogo-detallado-de-endpoints)
    - 3.1 [`GET /healthz` — Comprobación de Salud](#31-get-healthz--comprobación-de-salud)
-   - 3.2 [`POST /v1/claim-audit` — Iniciar Auditoría de Reclamo](#32-post-v1claim-audit--iniciar-auditoría-de-reclamo)
-   - 3.3 [`GET /v1/cases/{case_id}` — Consultar Caso Persistido](#33-get-v1casescase_id--consultar-caso-persistido)
-   - 3.4 [`GET /v1/cases/{case_id}/evidence` — Listar Evidencias del Caso](#34-get-v1casescase_idevidence--listar-evidencias-del-caso)
-   - 3.5 [`GET /v1/cases/{case_id}/package` — Descargar Contenedor `.v52.zip`](#35-get-v1casescase_idpackage--descargar-contenedor-v52zip)
-   - 3.6 [`POST /v1/verify` — Verificar Integridad de Paquete `.v52.zip`](#36-post-v1verify--verificar-integridad-de-paquete-v52zip)
+   - 3.2 [`GET /v1/providers/status` — Estado de Proveedores RPC/Graph](#32-get-v1providersstatus--estado-de-proveedores-rpcgraph)
+   - 3.3 [`GET /v1/rpc/transactions/{chain}/{tx_hash}` — Obtener Transacción](#33-get-v1rpctransactionschaintx_hash--obtener-transacción)
+   - 3.4 [`GET /v1/rpc/receipts/{chain}/{tx_hash}` — Obtener Recibo](#34-get-v1rpcreceiptschaintx_hash--obtener-recibo)
+   - 3.5 [`POST /v1/audits` — Crear Auditoría](#35-post-v1audits--crear-auditoría)
+   - 3.6 [`GET /v1/audits/{job_id}` — Estado de Auditoría](#36-get-v1auditsjob_id--estado-de-auditoría)
+   - 3.7 [`POST /v1/claim-audit` — Iniciar Auditoría de Reclamo](#37-post-v1claim-audit--iniciar-auditoría-de-reclamo)
+   - 3.8 [`GET /v1/cases/{case_id}` — Consultar Caso Persistido](#38-get-v1casescase_id--consultar-caso-persistido)
+   - 3.9 [`GET /v1/cases/{case_id}/evidence` — Listar Evidencias del Caso](#39-get-v1casescase_idevidence--listar-evidencias-del-caso)
+   - 3.10 [`GET /v1/cases/{case_id}/package` — Descargar Contenedor `.v52.zip`](#310-get-v1casescase_idpackage--descargar-contenedor-v52zip)
+   - 3.11 [`POST /v1/verify` — Verificar Integridad de Paquete `.v52.zip`](#311-post-v1verify--verificar-integridad-de-paquete-v52zip)
+   - 3.12 [Autenticación y Wallet Flow](#312-autenticación-y-wallet-flow)
 4. [Casos de Error y Validaciones de Entrada](#4-casos-de-error-y-validaciones-de-entrada)
 5. [Guía de Integración para Clientes (TypeScript y Python)](#5-guía-de-integración-para-clientes-typescript-y-python)
 
@@ -59,10 +66,10 @@ Para la fase actual (P0 / Demostración ETHOnline):
   - `http://127.0.0.1:5173`
   - `http://localhost:3000`
   - `http://127.0.0.1:3000`
-  - Métodos permitidos: `GET`, `POST`
-  - Encabezados permitidos: `Content-Type`, `Accept`
+  - Método permitidos: `GET`, `POST`
+  - Encabezados permitidos: `Content-Type`, `Accept`, `Payment-Signature`, `Payment-Required`, `X-Payment`
 - **Entorno de Producción (`V52_ENV=production`):**  
-  CORS restringido para despliegue de mismo origen (Same-Origin).
+  Configurable mediante `V52_CORS_ORIGINS` (lista separada por comas). Cuando está vacío, solo se permiten orígenes que coincidan con `V52_PUBLIC_ORIGIN`.
 
 ### 1.4 Códigos de Estado HTTP
 
@@ -73,6 +80,8 @@ Para la fase actual (P0 / Demostración ETHOnline):
 | **404 Not Found** | No Encontrado | El `case_id` especificado no existe o su paquete no ha sido generado. |
 | **413 Payload Too Large** | Carga Excesiva | Archivo ZIP subido a `/v1/verify` supera los 100 MB. |
 | **422 Unprocessable Entity**| Validación Fallida | Hash de transacción inválido, dirección no EVM, longitud de reclamo o chain_id no soportado. |
+| **502 Bad Gateway** | Proveedor no disponible | RPC o The Graph endpoint no está accesible o devolvió error. |
+| **503 Service Unavailable** | Servicio no configurado | RPC o The Graph endpoint no está configurado en `V52_*` variables. |
 | **500 Internal Error** | Error del Servidor | Error no controlado. Mensaje genérico de protección activado. |
 
 ### 1.5 Estructura de Errores
@@ -97,6 +106,42 @@ Generado automáticamente por los validadores Pydantic:
 {
   "detail": "Case 'case_1_4a8b12f0_d8da6b_9f2a1b3c' not found."
 }
+```
+
+### 1.6 Configuración RPC y The Graph
+
+#### Multi-chain RPC Support
+
+Vector52 soporta tres blockchains:
+- **Ethereum Mainnet** (chain_id = 1): Alchemy RPC
+- **Avalanche C-Chain** (chain_id = 43114): Alchemy RPC
+- **Avalanche Fuji Testnet** (chain_id = 43113): Alchemy RPC (seleccionable)
+- **HSK** (chain_id = 177): RPC separado (no disponible en Alchemy)
+
+#### Configuración de Credenciales
+
+**Método Recomendado (v0.1.0+):** Usar una sola clave API de Alchemy:
+```
+ALCHEMY_API_KEY=tu-api-key-aqui
+```
+El backend construye automáticamente las URLs de Ethereum y Avalanche usando los subdominios estándar de Alchemy.
+
+**Método Alternativo:** Especificar URLs completas explícitamente (tiene prioridad):
+```
+ALCHEMY_ETH_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/tu-key
+ALCHEMY_AVAX_RPC_URL=https://avax-mainnet.g.alchemy.com/v2/tu-key
+HSK_RPC_URL=https://tu-proveedor-hsk/rpc
+```
+
+**Parámetros Adicionales:**
+- `RPC_TIMEOUT_MS` (default: 12000): Timeout en milisegundos para llamadas RPC
+- `RPC_MAX_RETRIES` (default: 2): Reintentos en caso de fallo transitorio
+- `ALCHEMY_AVAX_CHAIN_ID` (default: 43114): Configura a 43113 para usar Fuji Testnet en lugar de Mainnet
+
+The Graph endpoint es requerido en producción:
+```
+V52_GRAPH_ENDPOINT=https://gateway.thegraph.com/api/{api_key}/subgraphs/id/...
+V52_GRAPH_API_KEY=tu-api-key-aqui
 ```
 
 #### Error Global No Controlado (HTTP 500):
@@ -294,7 +339,180 @@ print(response.json())
 
 ---
 
-### 3.2 `POST /v1/claim-audit` — Iniciar Auditoría de Reclamo
+### 3.2 `GET /v1/providers/status` — Estado de Proveedores RPC/Graph
+
+Verifica la disponibilidad y estado operativo de todos los proveedores de datos configurados (RPC de blockchain y The Graph).
+
+- **Método:** `GET`
+- **Ruta:** `/v1/providers/status`
+- **Autenticación:** No requerida
+
+#### Respuesta Exitosa (HTTP 200 OK):
+```json
+{
+  "status": "ok",
+  "data": {
+    "rpc": {
+      "ethereum": {
+        "status": "UP",
+        "chain_id": 1,
+        "chain_id_expected": 1,
+        "block_height": 18850000,
+        "latest_block_hash": "0x..."
+      },
+      "avalanche": {
+        "status": "UP",
+        "chain_id": 43114,
+        "chain_id_expected": 43114
+      },
+      "hsk": {
+        "status": "DOWN",
+        "error": "Not configured"
+      }
+    },
+    "graph": {
+      "status": "UP",
+      "deployment": "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
+      "has_indexing_errors": false
+    }
+  },
+  "errors": []
+}
+```
+
+---
+
+### 3.3 `GET /v1/rpc/transactions/{chain}/{tx_hash}` — Obtener Transacción
+
+Obtiene los detalles completos de una transacción desde el RPC y preserva la evidencia en la bóveda.
+
+- **Método:** `GET`
+- **Ruta:** `/v1/rpc/transactions/{chain}/{tx_hash}`
+- **Parámetros de ruta:**
+  - `chain` (string): Nombre de la blockchain (`ethereum`, `avalanche`, `hsk`)
+  - `tx_hash` (string): Hash de la transacción (66 caracteres: 0x + 64 hex)
+
+#### Respuesta Exitosa (HTTP 200 OK):
+```json
+{
+  "status": "COMPLETE",
+  "data": {
+    "result": {
+      "hash": "0x4a8b12f0c78a2e1d84f93b5a92c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e",
+      "from": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+      "to": "0x1111111254fb6c44bac0bed2854e76f90643097d",
+      "value": "0",
+      "gas": "150000",
+      "gasPrice": "20000000000",
+      "nonce": "42",
+      "blockNumber": "0x11f4a00",
+      "blockHash": "0x..."
+    },
+    "evidence": {
+      "raw_path": "transactions/ethereum/4a8b12f0.json",
+      "raw_sha256": "sha256:abc123def456..."
+    }
+  }
+}
+```
+
+---
+
+### 3.4 `GET /v1/rpc/receipts/{chain}/{tx_hash}` — Obtener Recibo
+
+Obtiene el recibo de transacción (resultado de ejecución, gas usado, logs) desde el RPC.
+
+- **Método:** `GET`
+- **Ruta:** `/v1/rpc/receipts/{chain}/{tx_hash}`
+- **Parámetros de ruta:** Igual a transacción
+
+#### Respuesta Exitosa (HTTP 200 OK):
+```json
+{
+  "status": "COMPLETE",
+  "data": {
+    "result": {
+      "transactionHash": "0x4a8b12f0c78a2e1d84f93b5a92c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e",
+      "blockNumber": "0x11f4a00",
+      "gasUsed": "123456",
+      "status": "0x1",
+      "logs": [
+        {
+          "address": "0x...",
+          "topics": ["0x..."],
+          "data": "0x..."
+        }
+      ]
+    },
+    "evidence": {
+      "raw_path": "receipts/ethereum/4a8b12f0.json",
+      "raw_sha256": "sha256:xyz789..."
+    }
+  }
+}
+```
+
+---
+
+### 3.5 `POST /v1/audits` — Crear Auditoría
+
+Inicia una auditoría asincrónica completa. Retorna inmediatamente con un `job_id` para consultar el progreso.
+
+- **Método:** `POST`
+- **Ruta:** `/v1/audits`
+- **Content-Type:** `application/json`
+
+#### Cuerpo de la Petición:
+```json
+{
+  "chain_id": 1,
+  "transaction_hash": "0x4a8b12f0c78a2e1d84f93b5a92c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e",
+  "subject": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+  "claim": "The subject swapped 10 ETH for DAI on Uniswap V3",
+  "limits": {
+    "max_hops": 5,
+    "max_events": 1000
+  },
+  "use_ai": false
+}
+```
+
+#### Respuesta Exitosa (HTTP 200 OK):
+```json
+{
+  "status": "RUNNING",
+  "data": {
+    "job_id": "job_1d73af8d2a8e",
+    "case_id": "case_1_4a8b12f0_d8da6b_9f2a1b3c"
+  }
+}
+```
+
+---
+
+### 3.6 `GET /v1/audits/{job_id}` — Estado de Auditoría
+
+Consulta el estado y resultados de una auditoría en progreso o completada.
+
+- **Método:** `GET`
+- **Ruta:** `/v1/audits/{job_id}`
+
+#### Respuesta Exitosa (HTTP 200 OK):
+```json
+{
+  "status": "COMPLETE",
+  "data": {
+    "job_id": "job_1d73af8d2a8e",
+    "case_id": "case_1_4a8b12f0_d8da6b_9f2a1b3c",
+    "verdict": "SUPPORTED",
+    "summary": "Evidence supports the claim"
+  }
+}
+```
+
+---
+
+### 3.7 `POST /v1/claim-audit` — Iniciar Auditoría de Reclamo
 
 Ejecuta el pipeline completo de adquisición de evidencia L0 y L1, preservación criptográfica en la bóveda, generación de registros de procedencia y emisión de resultados de auditoría.
 
@@ -388,7 +606,7 @@ curl -X POST http://localhost:8000/v1/claim-audit \
 
 ---
 
-### 3.3 `GET /v1/cases/{case_id}` — Consultar Caso Persistido
+### 3.8 `GET /v1/cases/{case_id}` — Consultar Caso Persistido
 
 Recupera los metadatos y el estado actual de un caso auditado previamente.
 
@@ -432,7 +650,7 @@ Recupera los metadatos y el estado actual de un caso auditado previamente.
 
 ---
 
-### 3.4 `GET /v1/cases/{case_id}/evidence` — Listar Evidencias del Caso
+### 3.9 `GET /v1/cases/{case_id}/evidence` — Listar Evidencias del Caso
 
 Devuelve la lista detallada de registros de evidencia (`EvidenceRecord`) vinculados a un caso.
 
@@ -484,7 +702,7 @@ Devuelve un arreglo JSON con los registros de evidencia deserializados:
 
 ---
 
-### 3.5 `GET /v1/cases/{case_id}/package` — Descargar Contenedor `.v52.zip`
+### 3.10 `GET /v1/cases/{case_id}/package` — Descargar Contenedor `.v52.zip`
 
 Descarga el contenedor forense autocontenido `.v52.zip` que contiene todas las evidencias crudas y el `manifest.json`.
 
@@ -511,7 +729,7 @@ curl -O -J http://localhost:8000/v1/cases/case_1_4a8b12f0_d8da6b_9f2a1b3c/packag
 
 ---
 
-### 3.6 `POST /v1/verify` — Verificar Integridad de Paquete `.v52.zip`
+### 3.11 `POST /v1/verify` — Verificar Integridad de Paquete `.v52.zip`
 
 Permite a cualquier entidad subir un archivo `.v52.zip` para comprobar su autenticidad e inmutabilidad.
 

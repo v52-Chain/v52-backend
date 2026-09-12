@@ -1,5 +1,15 @@
 """API package."""
 
-from app.api import access, agent, cases, claim_audit, health, verify, wallet_flow
+from app.api import access, agent, audits, cases, claim_audit, health, providers, rpc, verify
 
-__all__ = ["access", "agent", "cases", "claim_audit", "health", "verify", "wallet_flow"]
+__all__ = [
+    "access",
+    "agent",
+    "audits",
+    "cases",
+    "claim_audit",
+    "health",
+    "providers",
+    "rpc",
+    "verify",
+]

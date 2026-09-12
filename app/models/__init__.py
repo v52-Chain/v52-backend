@@ -8,9 +8,11 @@ from app.models.claim import (
     ContributionSummary,
     Predicate,
     ProvenanceSummary,
+    TokenAmountValue,
 )
 from app.models.evidence import AuthorityLevel, EvidenceRecord, EvidenceStatus, ProviderStatus
 from app.models.protocol import ProtocolAction, SwapEvent, TokenInfo
+from app.models.reconciliation import ReconciliationResult, ReconciliationStatus
 from app.models.verdict import Verdict
 
 __all__ = [
@@ -26,7 +28,10 @@ __all__ = [
     "ProtocolAction",
     "ProvenanceSummary",
     "ProviderStatus",
+    "ReconciliationResult",
+    "ReconciliationStatus",
     "SwapEvent",
+    "TokenAmountValue",
     "TokenInfo",
     "Verdict",
 ]
