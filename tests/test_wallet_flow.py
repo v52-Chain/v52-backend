@@ -30,6 +30,7 @@ def _unconfigured_settings() -> Settings:
     return Settings(
         _env_file=None,
         V52_ENV="development",
+        ALCHEMY_API_KEY="",
         V52_RPC_URL="",
         V52_ALCHEMY_ETH_RPC_URL="",
         V52_GRAPH_ENDPOINT="",
