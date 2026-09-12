@@ -32,7 +32,15 @@
    - 3.9 [`GET /v1/cases/{case_id}/evidence` — Listar Evidencias del Caso](#39-get-v1casescase_idevidence--listar-evidencias-del-caso)
    - 3.10 [`GET /v1/cases/{case_id}/package` — Descargar Contenedor `.v52.zip`](#310-get-v1casescase_idpackage--descargar-contenedor-v52zip)
    - 3.11 [`POST /v1/verify` — Verificar Integridad de Paquete `.v52.zip`](#311-post-v1verify--verificar-integridad-de-paquete-v52zip)
-   - 3.12 [Autenticación y Wallet Flow](#312-autenticación-y-wallet-flow)
+   - 3.12 [Autenticación Web y Wallet Flow para Frontend (SIWE)](#312-autenticación-web-y-wallet-flow-para-frontend-siwe)
+     - 3.12.1 [`POST /v1/auth/wallet/challenge` — Generar Desafío SIWE](#3121-post-v1authwalletchallenge--generar-desafío-siwe)
+     - 3.12.2 [`POST /v1/auth/wallet/verify` — Verificar Firma y Emitir Sesión](#3122-post-v1authwalletverify--verificar-firma-y-emitir-sesión)
+     - 3.12.3 [`GET /v1/auth/wallet/me` — Identidad de Sesión Actual](#3123-get-v1authwalletme--identidad-de-sesión-actual)
+     - 3.12.4 [`POST /v1/web/investigations/wallet-flow` — Flujo Forense Web Autenticado](#3124-post-v1webinvestigationswallet-flow--flujo-forense-web-autenticado)
+   - 3.13 [Canal de Agentes e IAs con x402 (M2M)](#313-canal-de-agentes-e-ias-con-x402-m2m)
+     - 3.13.1 [`GET /v1/agent/capabilities` — Capacidades de Pago x402](#3131-get-v1agentcapabilities--capacidades-de-pago-x402)
+     - 3.13.2 [`POST /v1/agent/investigations/wallet-flow` — Flujo Forense Pagado con x402](#3132-post-v1agentinvestigationswallet-flow--flujo-forense-pagado-con-x402)
+   - 3.14 [Matriz de Protección y Políticas x402 (Humanos vs Agentes Artificiales)](#314-matriz-de-protección-y-políticas-x402-humanos-vs-agentes-artificiales)
 4. [Casos de Error y Validaciones de Entrada](#4-casos-de-error-y-validaciones-de-entrada)
 5. [Guía de Integración para Clientes (TypeScript y Python)](#5-guía-de-integración-para-clientes-typescript-y-python)
 
@@ -787,6 +795,268 @@ Permite a cualquier entidad subir un archivo `.v52.zip` para comprobar su autent
 curl -X POST http://localhost:8000/v1/verify \
   -F "file=@case_1_4a8b12f0_d8da6b_9f2a1b3c.v52.zip"
 ```
+
+---
+
+### 3.12 Autenticación Web y Wallet Flow para Frontend (SIWE)
+
+Este grupo de endpoints implementa el canal humano (`channel: "WEB"`) basado en el estándar **EIP-4361 (Sign-In with Ethereum - SIWE)**. Permite a los usuarios de la PWA autenticarse firmando un mensaje criptográfico con su billetera Web3 (MetaMask, Rabby, etc.) sin incurrir en costos de gas ni transacciones en cadena, otorgando un token de sesión `Bearer` (TTL 8 horas).
+
+---
+
+#### 3.12.1 `POST /v1/auth/wallet/challenge` — Generar Desafío SIWE
+
+Genera un nonce criptográfico único y un mensaje formateado con EIP-4361 que el usuario debe firmar en su billetera.
+
+- **Método:** `POST`
+- **Ruta:** `/v1/auth/wallet/challenge`
+- **Autenticación:** Pública (sin credenciales)
+- **Cuerpo de la Solicitud (`WalletChallengeRequest`):**
+  ```json
+  {
+    "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+    "chain_id": 1
+  }
+  ```
+  - `address` (`string`): Dirección EVM de 40 caracteres hexadecimales precedida de `0x`.
+  - `chain_id` (`int`): `1` (Ethereum Mainnet) o `43113` (Avalanche Fuji).
+
+##### Respuesta Exitosa (HTTP 200 OK — `WalletChallengeResponse`):
+```json
+{
+  "nonce": "kM98xZ_a1b2c3d4e5f",
+  "message": "localhost wants you to sign in with your Ethereum account:\n0xd8da6bf26964af9d7eed9e03e53415d37aa96045\n\nAuthenticate this browser session to Vector52. No blockchain transaction will be sent.\n\nURI: http://localhost:8000\nVersion: 1\nChain ID: 1\nNonce: kM98xZ_a1b2c3d4e5f\nIssued At: 2026-09-12T16:00:00+00:00\nExpiration Time: 2026-09-12T16:05:00+00:00",
+  "expires_at": "2026-09-12T16:05:00+00:00"
+}
+```
+
+---
+
+#### 3.12.2 `POST /v1/auth/wallet/verify` — Verificar Firma y Emitir Sesión
+
+Verifica la firma `personal_sign` del mensaje contra la dirección declarada y genera un token de sesión opaco.
+
+- **Método:** `POST`
+- **Ruta:** `/v1/auth/wallet/verify`
+- **Cuerpo de la Solicitud (`WalletVerifyRequest`):**
+  ```json
+  {
+    "nonce": "kM98xZ_a1b2c3d4e5f",
+    "message": "localhost wants you to sign in with your Ethereum account:\n...",
+    "signature": "0x3045022100..."
+  }
+  ```
+
+##### Respuesta Exitosa (HTTP 200 OK — `WalletSessionResponse`):
+```json
+{
+  "access_token": "v52_sec_9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d",
+  "token_type": "bearer",
+  "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+  "chain_id": 1,
+  "expires_at": "2026-09-13T00:00:00+00:00"
+}
+```
+
+##### Respuestas de Error:
+- **HTTP 401 Unauthorized:** Desafío no encontrado, expirado (TTL 5 min) o firma que no coincide con la dirección.
+  ```json
+  {"detail": "Wallet challenge is invalid or expired."}
+  ```
+
+---
+
+#### 3.12.3 `GET /v1/auth/wallet/me` — Identidad de Sesión Actual
+
+Retorna los datos de la billetera asociada al token Bearer activo.
+
+- **Método:** `GET`
+- **Ruta:** `/v1/auth/wallet/me`
+- **Encabezado Requerido:** `Authorization: Bearer <access_token>`
+
+##### Respuesta Exitosa (HTTP 200 OK — `WalletIdentityResponse`):
+```json
+{
+  "channel": "WEB",
+  "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+  "chain_id": 1,
+  "expires_at": "2026-09-13T00:00:00+00:00"
+}
+```
+
+---
+
+#### 3.12.4 `POST /v1/web/investigations/wallet-flow` — Flujo Forense Web Autenticado
+
+Ejecuta la adquisición forense de transferencias de activos (Alchemy Transfers API) para una sesión web activa de usuario humano.
+
+- **Método:** `POST`
+- **Ruta:** `/v1/web/investigations/wallet-flow`
+- **Encabezado Requerido:** `Authorization: Bearer <access_token>`
+- **Cuerpo de la Solicitud (`WalletFlowJobRequest`):**
+  ```json
+  {
+    "target_address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+    "chain_id": 1,
+    "limit": 25,
+    "from_date": "2024-01-01",
+    "to_date": "2024-03-31"
+  }
+  ```
+
+##### Respuesta Exitosa (HTTP 200 OK — `WebWalletFlowResponse`):
+```json
+{
+  "channel": "WEB",
+  "actor_wallet": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+  "result": {
+    "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+    "acquired_at": "2026-09-12T16:05:30.123456+00:00",
+    "incoming": [],
+    "outgoing": [],
+    "limits": {
+      "requested_per_direction": 25,
+      "returned_incoming": 12,
+      "returned_outgoing": 18,
+      "truncated": false,
+      "from_date": "2024-01-01",
+      "to_date": "2024-03-31",
+      "max_pages_per_direction": 10
+    },
+    "warnings": [
+      "This view contains direct native/ERC-20 transfers only; internal protocol semantics are not inferred.",
+      "A connection is evidence of transfer, not proof of identity, ownership or wrongdoing."
+    ]
+  }
+}
+```
+
+---
+
+### 3.13 Canal de Agentes e IAs con x402 (M2M)
+
+Este grupo de endpoints implementa el canal artificial (`channel: "AGENT_X402"`) diseñado para la interacción autónoma de **servidores MCP, agentes LLM y bots** utilizando el protocolo de micropagos **x402 (HTTP 402 Payment Required)**.
+
+---
+
+#### 3.13.1 `GET /v1/agent/capabilities` — Capacidades de Pago x402
+
+Permite al agente o cliente MCP descubrir las reglas de pago vigentes (red, token de pago, monto y estado del servicio) antes de emitir una consulta de pago.
+
+- **Método:** `GET`
+- **Ruta:** `/v1/agent/capabilities`
+- **Autenticación:** Pública (sin credenciales ni pago)
+
+##### Respuesta Exitosa (HTTP 200 OK — `AgentCapabilitiesResponse`):
+```json
+{
+  "channel": "AGENT_X402",
+  "ready": true,
+  "endpoint": "/v1/agent/investigations/wallet-flow",
+  "payment_protocol": "x402",
+  "network": "eip155:43113",
+  "asset": "0x5425890298aed601595a70AB815c96711a31Bc65",
+  "amount_atomic": "1000",
+  "automatic_payment_owner": "MCP_CLIENT",
+  "warnings": []
+}
+```
+> **Nota:** `ready: false` indica que el facilitador x402 aún no cuenta con todas las credenciales de settlement configuradas.
+
+---
+
+#### 3.13.2 `POST /v1/agent/investigations/wallet-flow` — Flujo Forense Pagado con x402
+
+Ejecuta la misma adquisición determinista que el canal web, pero requiriendo autorización de micropago x402 en lugar de una sesión interactiva humana.
+
+- **Método:** `POST`
+- **Ruta:** `/v1/agent/investigations/wallet-flow`
+- **Cuerpo de la Solicitud (`WalletFlowJobRequest`):**
+  ```json
+  {
+    "target_address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+    "chain_id": 1,
+    "limit": 25
+  }
+  ```
+
+##### 1. Flujo Inicial sin Pago (Desafío HTTP 402):
+El middleware ASGI de x402 intercepta la petición y responde:
+- **HTTP Status:** `402 Payment Required`
+- **Header `PAYMENT-REQUIRED`:** Cadena Base64 con especificación JSON del requerimiento de pago:
+  ```json
+  {
+    "scheme": "exact",
+    "pay_to": "0xf92A1E3Fa1a163FEeB8c3753165410374fB08339",
+    "price": {
+      "amount": "1000",
+      "asset": "0x5425890298aed601595a70AB815c96711a31Bc65",
+      "extra": {
+        "name": "USD Coin",
+        "version": "2",
+        "areFeesSponsored": true
+      }
+    },
+    "network": "eip155:43113",
+    "max_timeout_seconds": 300
+  }
+  ```
+
+##### 2. Reintento con Pago por el Agente:
+El agente decodifica el header, firma la autorización off-chain (EIP-3009 o EIP-712 exact scheme) con su clave de agente y reenvía la petición incluyendo:
+- **Header:** `PAYMENT-SIGNATURE: <base64_signed_authorization>`
+
+El backend valida la autorización con el Facilitador OpenZeppelin Relayer (`/call/verify`), liquida on-chain (`/call/settle`) y procesa la investigación forense.
+
+##### Respuesta Exitosa (HTTP 200 OK — `AgentWalletFlowResponse`):
+```json
+{
+  "channel": "AGENT_X402",
+  "request_id": "agent_c4b912a7f80e4b859940182390f11acb",
+  "result": {
+    "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+    "acquired_at": "2026-09-12T16:06:12.871020+00:00",
+    "incoming": [],
+    "outgoing": [],
+    "limits": {
+      "requested_per_direction": 25,
+      "returned_incoming": 8,
+      "returned_outgoing": 14,
+      "truncated": false,
+      "from_date": null,
+      "to_date": null,
+      "max_pages_per_direction": 1
+    },
+    "warnings": [
+      "This view contains direct native/ERC-20 transfers only; internal protocol semantics are not inferred.",
+      "A connection is evidence of transfer, not proof of identity, ownership or wrongdoing."
+    ]
+  }
+}
+```
+
+---
+
+### 3.14 Matriz de Protección y Políticas x402 (Humanos vs Agentes Artificiales)
+
+Vector52 establece una política de seguridad y monetización diferenciada para proteger la estabilidad de sus proveedores de datos (Alchemy, The Graph, RPCs) y garantizar una experiencia fluida:
+
+| Endpoint | Canal Humano (PWA / Browser) | Canal Agente / IA (MCP / Script) | Razón Técnica y Protección |
+| :--- | :--- | :--- | :--- |
+| **`GET /healthz`** | **Público (Libre)** | **Público (Libre)** | Liveness probe del servidor. Sin acceso a datos sensibles. |
+| **`GET /v1/providers/status`** | **Público (Libre)** | **Público (Libre)** | Estado de conectividad de RPC y subgrafos (secretos redactados). |
+| **`POST /v1/verify`** | **Público (Libre)** | **Público (Libre)** | Verificación criptográfica de archivos `.v52.zip`. Es un **bien público** para auditoría abierta sin barreras de entrada. |
+| **`GET /v1/agent/capabilities`** | **Público (Libre)** | **Público (Libre)** | Introspección previa del agente para consultar tarifas y redes antes de pagar. |
+| **`GET /v1/audits/{job_id}`** | **Público (Libre)** | **Público (Libre)** | Polling de estado de auditorías previamente sometidas. No se penaliza al cliente por esperar resultados. |
+| **`POST /v1/auth/wallet/challenge`** | **Público (Libre)** | No aplicable | Generación de desafío SIWE. Expiración estricta de 5 minutos por nonce. |
+| **`POST /v1/auth/wallet/verify`** | **Público (Libre)** | No aplicable | Verificación de firma criptográfica y emisión de sesión Bearer (TTL 8h). |
+| **`GET /v1/auth/wallet/me`** | **Sesión Bearer (SIWE)** | No aplicable | Verificación de identidad activa en la PWA. |
+| **`POST /v1/web/investigations/wallet-flow`** | **Sesión Bearer (SIWE)** | No aplicable | Cuota interactiva en navegador para usuarios autenticados. Rate-limited por IP y dirección de billetera. |
+| **`POST /v1/agent/investigations/wallet-flow`** | No aplicable | **Protegido con x402** *(1000 atomic units USDC)* | Adquisición intensiva mediante Alchemy Transfers API. Previene consumo excesivo de créditos por agentes autónomos en bucle. |
+| **`POST /v1/audits` (Auditoría Estándar)** | **Sesión Bearer / Público Demo** | No aplicable | Auditoría forense estándar (hops = 1, eventos = 500) para demostración y evaluación de jueces. |
+| **`POST /v1/paid/claim-audit` (Deep / AI)** | **Protegido con x402** *(5000 atomic units USDC)* | **Protegido con x402** *(5000 atomic units USDC)* | Auditoría multi-hop exhaustiva con resúmenes generativos de IA L5 (`v52_ai_enabled`). |
+| **`POST /v1/cases/{case_id}/anchor`** | **Protegido con x402** *(2000 atomic units USDC)* | **Protegido con x402** *(2000 atomic units USDC)* | Registro inmutable de la raíz del manifest en el contrato de HashKey Chain (HSK). El pago cubre el patrocinio de gas del relayer. |
+| **`GET /v1/cases/{case_id}/package`** | **Sesión (Demo) / x402** | **Protegido con x402** *(500 atomic units USDC)* | Generación y descarga del contenedor forense autocontenido `.v52.zip` con sello de procedencia. |
 
 ---
 

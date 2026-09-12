@@ -32,6 +32,12 @@
 10. [Configuración y Seguridad](#10-configuración-y-seguridad)
 11. [Puntos de Extensión y Contratos de Integración](#11-puntos-de-extensión-y-contratos-de-integración)
 12. [Estrategia de Pruebas y Fixtures Verificados](#12-estrategia-de-pruebas-y-fixtures-verificados)
+13. [Modelo de Acceso Dual: Humanos (SIWE) vs Agentes Artificiales (x402)](#13-modelo-de-acceso-dual-humanos-siwe-vs-agentes-artificiales-x402)
+   - 13.1 [Arquitectura de Canales (WEB vs AGENT_X402)](#131-arquitectura-de-canales-web-vs-agent_x402)
+   - 13.2 [Canal Humano: Sign-In with Ethereum (SIWE) y Sesiones en Memoria](#132-canal-humano-sign-in-with-ethereum-siwe-y-sesiones-en-memoria)
+   - 13.3 [Canal Artificial: Micropagos x402 M2M y Liquidación en Avalanche](#133-canal-artificial-micropagos-x402-m2m-y-liquidación-en-avalanche)
+   - 13.4 [Diagramas de Secuencia e Interacción Criptográfica](#134-diagramas-de-secuencia-e-interacción-criptográfica)
+   - 13.5 [Matriz de Protección y Políticas de Cobro](#135-matriz-de-protección-y-políticas-de-cobro)
 
 ---
 
@@ -637,3 +643,135 @@ ruff check .
 # 2. Ejecución de la suite de pruebas unitarias e integración
 pytest -v
 ```
+
+---
+
+## 13. Modelo de Acceso Dual: Humanos (SIWE) vs Agentes Artificiales (x402)
+
+Vector52 implementa una separación explícita entre usuarios interactivos de navegador y consumidores programáticos autónomos. Ambos canales se desacoplan en la capa de controladores (`app/api/access.py` y `app/api/agent.py`), pero convergen en el mismo núcleo forense determinista (`app/api/wallet_flow.py` y `app/orchestration/audit_pipeline.py`).
+
+### 13.1 Arquitectura de Canales (`WEB` vs `AGENT_X402`)
+
+```
+               ┌────────────────────────────────────────────────────────┐
+               │                 Clientes de Vector52                   │
+               └───────────────────┬────────────────┬───────────────────┘
+                                   │                │
+            Canal Humano (Browser) │                │ Canal Agente (M2M)
+                                   ▼                ▼
+                     ┌──────────────────┐     ┌──────────────────┐
+                     │ PWA Frontend Web │     │ MCP / IA Agents  │
+                     └─────────┬────────┘     └────────┬─────────┘
+                               │                       │
+               EIP-4361 (SIWE) │                       │ x402 v2 Protocol
+             Offchain Signature│                       │ EIP-3009/EIP-712
+                               ▼                       ▼
+                     ┌──────────────────┐     ┌──────────────────┐
+                     │ /v1/auth/wallet/*│     │ PaymentMiddleware│
+                     │  Session Store   │     │      (x402)      │
+                     └─────────┬────────┘     └────────┬─────────┘
+                               │ Bearer                │ Verified &
+                               │ Token                 │ Settled
+                               ▼                       ▼
+                     ┌──────────────────┐     ┌──────────────────┐
+                     │ /v1/web/*        │     │ /v1/agent/*      │
+                     └─────────┬────────┘     └────────┬─────────┘
+                               │                       │
+                               └───────────┬───────────┘
+                                           │
+                                           ▼
+                     ┌───────────────────────────────────────────┐
+                     │       Motor Forense Unificado Core        │
+                     │  - acquire_wallet_flow() (Alchemy L2)     │
+                     │  - AuditPipeline (RPC L0 + The Graph L1)  │
+                     │  - Evidence Vault & SHA-256 Hashes        │
+                     └───────────────────────────────────────────┘
+```
+
+---
+
+### 13.2 Canal Humano: Sign-In with Ethereum (SIWE) y Sesiones en Memoria
+
+Para usuarios humanos que interactúan mediante la PWA, requerir un pago on-chain por cada clic o consulta destruiría la experiencia de usuario (UX) debido a la fricción de aprobaciones repetitivas en wallets como MetaMask. 
+
+Por ello, el canal humano emplea **Sign-In with Ethereum (EIP-4361)**:
+1. **Desafío Único (`_CHALLENGE_TTL = 5 min`):** `POST /v1/auth/wallet/challenge` genera un nonce aleatorio (`secrets.token_urlsafe(18)`) y un mensaje formal que incluye dominio, URI de origen, chain ID, timestamps y advertencia explícita: *"Authenticate this browser session to Vector52. No blockchain transaction will be sent."*
+2. **Firma Off-Chain Gratuita:** El usuario firma mediante `personal_sign`. No requiere gas ni interactúa con la blockchain.
+3. **Verificación Criptográfica:** `POST /v1/auth/wallet/verify` valida la firma usando `eth_account.Account.recover_message` y comprueba que coincida estrictamente con el registro original.
+4. **Almacenamiento de Sesión (`WalletSessionStore`):** Se genera un token Bearer opaco de 32 bytes (`secrets.token_urlsafe(32)`) con una duración de 8 horas (`_SESSION_TTL = 8h`). Los tokens se almacenan en memoria indexados por su hash SHA-256 (`_token_digest`) para proteger las credenciales en caso de volcado de memoria.
+
+---
+
+### 13.3 Canal Artificial: Micropagos x402 M2M y Liquidación en Avalanche
+
+Los agentes de Inteligencia Artificial (IAs, servidores MCP, bots autónomos) no poseen interacción humana en tiempo real para aprobar ventanas emergentes. Además, pueden ejecutar consultas en bucles de razonamiento masivos que agotarían las cuotas de APIs externas (Alchemy, The Graph) si fueran gratuitas.
+
+El canal de agentes utiliza el protocolo **x402 (HTTP 402 Payment Required)**:
+- **Middleware ASGI (`PaymentMiddlewareASGI`):** Intercepta peticiones a `/v1/agent/*`. Si la petición no cuenta con pago, devuelve `HTTP 402` y el header `PAYMENT-REQUIRED` con la cotización exacta.
+- **Autorización EIP-3009 / EIP-712:** El cliente MCP firma la autorización con su clave delegada o control de gasto programático (`BUYER_PRIVATE_KEY`).
+- **Liquidación Delegada al Facilitador:** El backend Vector52 se comunica con el **OpenZeppelin Relayer** (`/call/verify` y `/call/settle`) autenticado mediante `BearerAuthProvider`.
+- **Red de Liquidación:** **Avalanche Fuji Testnet** (`eip155:43113`) utilizando el contrato de **USDC** (`0x5425890298aed601595a70AB815c96711a31Bc65`).
+- **Stateless:** No requiere almacenamiento de sesiones; cada petición se verifica y liquida atómicamente por su uso exacto.
+
+---
+
+### 13.4 Diagramas de Secuencia e Interacción Criptográfica
+
+#### Flujo Humano: Autenticación SIWE en PWA
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Usuario Humano (Browser)
+    participant W as Wallet (MetaMask/Rabby)
+    participant B as Vector52 Backend (access.py)
+    participant S as WalletSessionStore
+
+    U->>B: POST /v1/auth/wallet/challenge {address, chain_id}
+    B->>S: Guardar nonce + mensaje (TTL 5 min)
+    B-->>U: HTTP 200 {nonce, message, expires_at}
+    U->>W: Solicitar firma personal_sign(message)
+    W-->>U: signature (0x...)
+    U->>B: POST /v1/auth/wallet/verify {nonce, message, signature}
+    B->>B: Account.recover_message(message, signature)
+    B->>S: Guardar sesión Bearer (TTL 8 hrs)
+    B-->>U: HTTP 200 {access_token, expires_at}
+    U->>B: POST /v1/web/investigations/wallet-flow (Authorization: Bearer token)
+    B-->>U: HTTP 200 WebWalletFlowResponse {actor_wallet, result}
+```
+
+#### Flujo Agente: Micropago Autónomo x402 M2M
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Agente / MCP Client
+    participant B as Vector52 Backend (x402 Middleware)
+    participant F as Facilitador OpenZeppelin Relayer
+    participant C as Avalanche Fuji (USDC Contract)
+
+    A->>B: POST /v1/agent/investigations/wallet-flow (sin pago)
+    B-->>A: HTTP 402 Payment Required (Header PAYMENT-REQUIRED)
+    Note over A: Decodifica requerimientos.<br/>Firma autorización EIP-3009 con BUYER_PRIVATE_KEY.<br/>Genera header PAYMENT-SIGNATURE.
+    A->>B: POST /v1/agent/investigations/wallet-flow (Header PAYMENT-SIGNATURE)
+    B->>F: POST /call/verify (Bearer Token Relayer)
+    F-->>B: {isValid: true}
+    B->>F: POST /call/settle
+    F->>C: Transacción on-chain de transferencia USDC
+    C-->>F: Tx Hash confirmada
+    F-->>B: {settled: true, txHash: "0x..."}
+    B->>B: acquire_wallet_flow() (Motor Forense)
+    B-->>A: HTTP 200 AgentWalletFlowResponse {request_id, result}
+```
+
+---
+
+### 13.5 Matriz de Protección y Políticas de Cobro
+
+Vector52 define cuatro niveles de acceso para balancear usabilidad, sostenibilidad y descentralización:
+
+| Nivel de Protección | Audiencia | Endpoints | Mecanismo de Seguridad |
+|---|---|---|---|
+| **Nivel 0: Bien Público / Abierto** | Cualquier cliente (Humanos y Agentes) | `GET /healthz`, `GET /v1/providers/status`, `GET /v1/agent/capabilities`, `GET /v1/audits/{job_id}`, `POST /v1/verify` | Totalmente público. Cero tarifas. La verificación de integridad `.v52.zip` se mantiene abierta para auditoría universal. |
+| **Nivel 1: Autenticación Web Interactiva** | Usuarios Humanos (PWA) | `POST /v1/auth/wallet/challenge`, `POST /v1/auth/wallet/verify`, `GET /v1/auth/wallet/me`, `POST /v1/web/investigations/wallet-flow`, `POST /v1/audits` | Firma SIWE sin gas. Sesión Bearer de 8 horas. Cuotas interactivas de investigación controladas por rate-limiting. |
+| **Nivel 2: Micropago M2M Agentes** | IAs, MCPs, Bots Autónomos | `POST /v1/agent/investigations/wallet-flow` (1000 atomic USDC) | Protocolo x402 v2 con settlement on-chain en Avalanche Fuji. Cobro por consulta para amortizar consumo de API externas. |
+| **Nivel 3: Operaciones On-Chain / Premium** | Humanos y Agentes | `POST /v1/paid/claim-audit` (5000 atomic USDC), `POST /v1/cases/{case_id}/anchor` (2000 atomic USDC), `GET /v1/cases/{case_id}/package` (500 atomic USDC) | Requiere pago x402 tanto para agentes como para humanos (modal Web3 en PWA) para cubrir patrocinio de gas en HSK y análisis con IA L5. |
+

@@ -20,14 +20,18 @@
 - redacción de credenciales en errores de transporte;
 - CORS explícito mediante `V52_CORS_ORIGINS`;
 - reconciliación Graph/RPC con estados tipados;
+- **Canal de acceso Web (`WEB`)**: Autenticación criptográfica SIWE (EIP-4361) off-chain (`/v1/auth/wallet/challenge`, `/v1/auth/wallet/verify`, `/v1/auth/wallet/me`) con almacenamiento de sesiones Bearer en memoria (`WalletSessionStore`) para la PWA de navegador;
+- **Canal de acceso Agentes (`AGENT_X402`)**: Micropagos M2M autónomos con middleware ASGI de x402 v2 (`/v1/agent/capabilities`, `/v1/agent/investigations/wallet-flow`) delegando la liquidación on-chain al Facilitador OpenZeppelin Relayer en Avalanche Fuji (`eip155:43113`);
+- **Motor unificado de transferencias**: `acquire_wallet_flow` determinista compartido entre web y agentes mediante Alchemy Transfers API;
 - pruebas unitarias (incluye llamadas reales a RPC/The Graph, sin mocks; ver `docs/FUNCIONAMIENTO.md` §12).
 
-La suite fue verificada el 12 de septiembre: **72 tests pasaron** (4 adicionales del gateway de The Graph se omiten automáticamente si `V52_GRAPH_API_KEY` no está configurada). Esto valida adquisición, modelos, configuración, CORS y evidencia; no prueba un Claim Audit forense completo. `UniswapV3Resolver`, Contribution Analysis, predicados y auditor todavía son stubs, y el endpoint público devuelve `UNKNOWN` de forma intencional. El endpoint `GET /v1/wallets/{chain_id}/{address}/flow` (Alchemy Transfers API) fue retirado del alcance de este backend.
+La suite fue verificada el 12 de septiembre: **72 tests pasaron** (4 adicionales del gateway de The Graph se omiten automáticamente si `V52_GRAPH_API_KEY` no está configurada). Esto valida adquisición, modelos, configuración, CORS, autenticación y evidencia; no prueba un Claim Audit forense completo. `UniswapV3Resolver`, Contribution Analysis, predicados y auditor todavía son stubs, y el endpoint público devuelve `UNKNOWN` de forma intencional.
 
 ## Configuración
 
 Copiar `.env.example` a `.env` y completar valores localmente. `.env` nunca se versiona.
 
+### 1. RPCs y Proveedores de Datos
 Forma recomendada: obtener una sola API key desde el dashboard de Alchemy
 (https://dashboard.alchemy.com/apps) y configurar únicamente `ALCHEMY_API_KEY`. El
 backend arma automáticamente las URLs de Ethereum y Avalanche a partir de esa key
@@ -46,6 +50,19 @@ tienen prioridad sobre `ALCHEMY_API_KEY` cuando ambos están presentes. `V52_RPC
 sigue aceptado como fallback legacy para Ethereum, pero el nombre preferido es
 `ALCHEMY_API_KEY`. HSK no está disponible en Alchemy, por lo que siempre requiere su
 propio `HSK_RPC_URL`.
+
+### 2. Canal de Micropagos x402 (Agentes e IAs)
+Para habilitar el canal de pago M2M para servidores MCP y agentes de IA:
+
+```dotenv
+V52_X402_ENABLED=true
+V52_X402_FACILITATOR_URL=https://tu-relayer.ngrok-free.dev/api/v1/plugins/x402/call
+V52_X402_FACILITATOR_API_KEY=tu_api_key_del_relayer
+V52_X402_PAY_TO=0xf92A1E3Fa1a163FEeB8c3753165410374fB08339
+V52_X402_NETWORK=eip155:43113
+V52_X402_ASSET=0x5425890298aed601595a70AB815c96711a31Bc65
+V52_X402_WALLET_FLOW_PRICE=1000
+```
 
 Las API keys y URLs de providers son backend-only. No deben aparecer en `VITE_*`,
 respuestas HTTP, logs, screenshots ni expedientes `.v52`.
