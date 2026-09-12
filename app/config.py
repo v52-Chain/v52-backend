@@ -208,6 +208,19 @@ class Settings(BaseSettings):
     def graph_configured(self) -> bool:
         return bool(self.v52_graph_endpoint)
 
+    @property
+    def x402_configured(self) -> bool:
+        """x402 payment channel is fully configured when all required fields are set and enabled."""
+        return self.v52_x402_enabled and all(
+            (
+                self.v52_x402_facilitator_url,
+                self.v52_x402_facilitator_api_key,
+                self.v52_x402_pay_to,
+                self.v52_x402_network,
+                self.v52_x402_asset,
+            )
+        )
+
     @field_validator("v52_storage_backend")
     @classmethod
     def validate_storage_backend(cls, value: str) -> str:
@@ -243,6 +256,7 @@ class Settings(BaseSettings):
             "alchemy_avax_configured": self.alchemy_avax_configured,
             "hsk_rpc_configured": self.hsk_rpc_configured,
             "graph_configured": self.graph_configured,
+            "x402_configured": self.x402_configured,
             "rpc_timeout_ms": self.rpc_timeout_ms,
             "rpc_max_retries": self.rpc_max_retries,
             "alchemy_eth_chain_id": self.alchemy_eth_chain_id,
@@ -252,6 +266,8 @@ class Settings(BaseSettings):
             "v52_storage_backend": self.v52_storage_backend,
             "v52_cache_enabled": self.v52_cache_enabled,
             "v52_ai_enabled": self.v52_ai_enabled,
+            "v52_x402_enabled": self.v52_x402_enabled,
+            "v52_x402_network": self.v52_x402_network,
             "v52_mongodb_database": self.v52_mongodb_database,
             "v52_rpc_url": _REDACTED if self.v52_rpc_url else "(not set)",
             "alchemy_api_key": _REDACTED if self.v52_alchemy_api_key else "(not set)",
@@ -261,6 +277,9 @@ class Settings(BaseSettings):
             "v52_graph_api_key": _REDACTED if self.v52_graph_api_key else "(not set)",
             "v52_mongodb_uri": _REDACTED if self.v52_mongodb_uri else "(not set)",
             "v52_ai_api_key": _REDACTED if self.v52_ai_api_key else "(not set)",
+            "v52_x402_facilitator_api_key": (
+                _REDACTED if self.v52_x402_facilitator_api_key else "(not set)"
+            ),
             "v52_upstash_redis_rest_token": (
                 _REDACTED if self.v52_upstash_redis_rest_token else "(not set)"
             ),
