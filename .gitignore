@@ -1,37 +1,61 @@
-# Secrets and local configuration
+# ── Secrets and local configuration ──────────────────────────────────────────
 .env
 .env.*
 !.env.example
 *.pem
 *.key
+.mcp.json
 
-# Python
+# ── Python cache and build artifacts ─────────────────────────────────────────
 __pycache__/
 *.py[cod]
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Python virtual environments ───────────────────────────────────────────────
 .venv/
 venv/
+env/
+ENV/
+
+# ── Build and distribution ────────────────────────────────────────────────────
 dist/
 build/
 *.egg-info/
+*.egg
+wheels/
+
+# ── Test cache and coverage ───────────────────────────────────────────────────
+.pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
+*.cover
 
-# Runtime evidence and packages
-evidence_vault/
+# ── Linter cache ──────────────────────────────────────────────────────────────
+.ruff_cache/
+.mypy_cache/
+
+# ── Runtime evidence vault (never version live evidence) ─────────────────────
+evidence_vault/*
+!evidence_vault/.gitkeep
+
+# ── Vector52 packages ─────────────────────────────────────────────────────────
 *.v52
 *.v52.zip
 
-# Logs and temporary files
+# ── Logs and temporary files ──────────────────────────────────────────────────
 *.log
 tmp/
 temp/
 *.tmp
 
-# IDE / OS
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json

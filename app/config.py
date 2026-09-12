@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # Runtime
     v52_env: str = Field(default="development", alias="V52_ENV")
+    v52_cors_origins: str = Field(default="", alias="V52_CORS_ORIGINS")
 
     # Legacy single Ethereum RPC. Kept only as a fallback during migration.
     v52_rpc_url: str = Field(default="", alias="V52_RPC_URL")
@@ -110,6 +111,15 @@ class Settings(BaseSettings):
         return Path(self.v52_data_dir)
 
     @property
+    def cors_origins(self) -> list[str]:
+        """Explicit browser origins allowed to call the API; never use a wildcard in production."""
+        return [
+            origin.strip().rstrip("/")
+            for origin in self.v52_cors_origins.split(",")
+            if origin.strip()
+        ]
+
+    @property
     def alchemy_eth_rpc_url(self) -> str:
         """Ethereum Alchemy endpoint, with legacy V52_RPC_URL fallback."""
         return self.v52_alchemy_eth_rpc_url or self.v52_rpc_url
@@ -175,6 +185,7 @@ class Settings(BaseSettings):
         """Return a dict safe to log."""
         return {
             "v52_env": self.v52_env,
+            "cors_origins": self.cors_origins,
             "rpc_configured": self.rpc_configured,
             "alchemy_configured": self.alchemy_configured,
             "alchemy_avax_configured": self.alchemy_avax_configured,

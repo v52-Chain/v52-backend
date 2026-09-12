@@ -12,8 +12,8 @@ Starts the API server with:
 
 Rules:
   - No secrets in log output (settings.safe_repr() is used).
-  - CORS is configured for same-origin deployment (frontend served by FastAPI).
-  - In development, CORS allows localhost origins for frontend dev server.
+  - CORS uses an explicit allowlist from configuration.
+  - In development, localhost frontend origins are also enabled.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import audits, cases, claim_audit, health, providers, rpc, verify, wallet_flow
+from app.api import audits, cases, claim_audit, health, providers, rpc, verify
 from app.config import get_settings
 
 logging.basicConfig(
@@ -68,24 +68,32 @@ def create_app() -> FastAPI:
     )
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    # In production the frontend is served by the same FastAPI process,
-    # so CORS is only needed for the Vite dev server in development.
-    allowed_origins = (
-        [
-            "http://localhost:5173",   # Vite default
-            "http://localhost:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000",
-        ]
-        if not settings.is_production
-        else []
+    # Browser origins are explicit. Production commonly serves the PWA and API
+    # from different hosts (for example Vercel + a Python host), so the allowlist
+    # comes from V52_CORS_ORIGINS instead of assuming a same-origin deployment.
+    development_origins = [
+        "http://localhost:5173",  # Vite default
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ]
+    allowed_origins = list(
+        dict.fromkeys(
+            ([] if settings.is_production else development_origins) + settings.cors_origins
+        )
     )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type", "Accept"],
+        allow_headers=[
+            "Content-Type",
+            "Accept",
+            "Payment-Signature",
+            "Payment-Required",
+            "X-Payment",
+        ],
     )
 
     # ── Routers ───────────────────────────────────────────────────────────────
@@ -94,9 +102,9 @@ def create_app() -> FastAPI:
     app.include_router(rpc.router)
     app.include_router(audits.router)
     app.include_router(claim_audit.router)
-    app.include_router(wallet_flow.router)
     app.include_router(cases.router)
     app.include_router(verify.router)
+    app.include_router(cases.router)
 
     # ── Global error handler — never expose stack traces in production ─────────
     @app.exception_handler(Exception)
