@@ -71,47 +71,6 @@ See [`docs/FUNCIONAMIENTO.md`](docs/FUNCIONAMIENTO.md) for the full architecture
 
 Comprobar versión de Python:
 ```bash
-<<<<<<< HEAD
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.venv\Scripts\python.exe -m pytest
-.venv\Scripts\python.exe -m ruff check .
-.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-## Cadenas
-
-Aliases aceptados por endpoints RPC:
-
-| Chain | Aliases | Provider |
-|---|---|---|
-| Ethereum Mainnet | `ethereum`, `eth`, `1` | Alchemy |
-| Avalanche | `avalanche`, `avax`, `43114`, `43113`, `fuji` | Alchemy |
-| HSK | `hsk`, `hashkey`, `177` | HSK RPC |
-
-`ALCHEMY_AVAX_CHAIN_ID` permite usar Mainnet `43114` o Fuji `43113` con el mismo adapter.
-
-## Reconciliacion Graph/RPC
-
-Estados permitidos:
-
-```text
-CORROBORATED
-MISMATCH
-INDEXER_LAG_SUSPECTED
-RPC_UNAVAILABLE
-INSUFFICIENT_DATA
-```
-
-Un mismatch se reporta como warning con procedencia preservada. No es una conclusion automatica
-de fraude, identidad ni ownership.
-
-## Pendiente de otros repos/equipo
-
-- Saul: fixtures Graph finales, contratos, subgraph HSK y pruebas x402/Avalanche.
-- Omar + Jhamil: consumo de los endpoints versionados desde frontend y Agent Access.
-- MCP/onchain: settlement real, anchors HSK y ABIs/direcciones verificadas.
-=======
 python --version   # o python3 --version en Linux
 ```
 
@@ -234,4 +193,38 @@ pytest
 # Correr linter con Ruff
 ruff check .
 ```
->>>>>>> main
+
+---
+
+## Cadenas
+
+Aliases aceptados por endpoints RPC:
+
+| Chain | Aliases | Provider |
+|---|---|---|
+| Ethereum Mainnet | `ethereum`, `eth`, `1` | Alchemy |
+| Avalanche | `avalanche`, `avax`, `43114`, `43113`, `fuji` | Alchemy |
+| HSK | `hsk`, `hashkey`, `177` | HSK RPC |
+
+`ALCHEMY_AVAX_CHAIN_ID` permite usar Mainnet `43114` o Fuji `43113` con el mismo adapter.
+
+## Reconciliación Graph/RPC
+
+Estados permitidos:
+
+```text
+CORROBORATED
+MISMATCH
+INDEXER_LAG_SUSPECTED
+RPC_UNAVAILABLE
+INSUFFICIENT_DATA
+```
+
+Un mismatch se reporta como warning con procedencia preservada. No es una conclusión automática
+de fraude, identidad ni ownership.
+
+## Pendiente de otros repos/equipo
+
+- Saul: fixtures Graph finales, contratos, subgraph HSK y pruebas x402/Avalanche.
+- Omar + Jhamil: consumo de los endpoints versionados desde frontend y Agent Access.
+- MCP/onchain: settlement real, anchors HSK y ABIs/direcciones verificadas.
