@@ -14,15 +14,18 @@ services:
       - key: PIP_DEFAULT_TIMEOUT
         value: "100"
       # ── RPC Configuration ──────────────────────────────────────────
-      # Set ALCHEMY_API_KEY in Render environment variables (keep it secret)
+      # CRITICAL: Set ALCHEMY_API_KEY in Render environment (mark as Secret)
+      # Do NOT set it here - use dashboard Environment Variables
       - key: V52_CORS_ORIGINS
         value: "https://vector52.vercel.app,https://app.vector52.xyz"
       - key: V52_PUBLIC_ORIGIN
         value: "https://vector52.vercel.app"
-      # ── The Graph ──────────────────────────────────────────────────
-      # Set V52_GRAPH_API_KEY in Render environment variables (keep it secret)
+      # ── The Graph (Optional for MVP) ────────────────────────────────
+      # Endpoint with public gateway (no API key needed)
       - key: V52_GRAPH_ENDPOINT
         value: "https://gateway.thegraph.com/api/{api_key}/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV"
+      # Optionally set V52_GRAPH_API_KEY in Render dashboard (mark as Secret)
+      # for private gateway with higher rate limits
       # ── RPC Timeouts ───────────────────────────────────────────────
       - key: RPC_TIMEOUT_MS
         value: "15000"

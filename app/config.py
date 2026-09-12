@@ -231,13 +231,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_requirements(self) -> Settings:
-        """Production must have live Ethereum RPC and The Graph endpoints."""
+        """Production must have live Ethereum RPC. The Graph is optional for MVP."""
         if self.is_production:
             missing = []
             if not self.alchemy_eth_rpc_url:
                 missing.append("ALCHEMY_ETH_RPC_URL")
-            if not self.v52_graph_endpoint:
-                missing.append("V52_GRAPH_ENDPOINT")
             if missing:
                 raise ValueError(
                     "Missing required configuration for production: "

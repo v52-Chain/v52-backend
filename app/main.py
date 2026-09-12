@@ -97,6 +97,18 @@ def create_app() -> FastAPI:
         ],
     )
 
+    # ── Root endpoint ─────────────────────────────────────────────────────────
+    @app.get("/", tags=["Health"])
+    async def root() -> dict[str, str]:
+        """API root — redirect to /docs for documentation."""
+        return {
+            "message": "Vector52 Backend — Evidence-First Ethereum Claim Auditor",
+            "version": "0.1.0",
+            "documentation": "/docs",
+            "health": "/healthz",
+            "status": "/v1/providers/status",
+        }
+
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health.router)
     app.include_router(providers.router)
