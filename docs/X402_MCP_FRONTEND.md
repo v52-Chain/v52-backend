@@ -227,13 +227,34 @@ Se corrió la suite de tests del backend (`pytest`, 94/95 pasan — el único te
 4. Firma inválida → `402` de nuevo (no rompe el servidor).
 5. Ciclo completo con una wallet efímera de prueba (sin fondos reales) y un facilitador mock local que simula `/supported`, `/verify` y `/settle` → **`200 OK`** con el resultado forense real (`acquire_wallet_flow` contra Alchemy).
 
-El facilitador de producción/staging (`V52_X402_FACILITATOR_URL`, expuesto por ngrok) **estaba caído durante esta verificación** (`ERR_NGROK_3200` — el túnel no está activo). Esto no es un bug del código: es que el proceso de OpenZeppelin Relayer + su túnel ngrok no estaba corriendo en el momento de la prueba. Antes de depender de x402 en un entorno real, reinicien ese túnel/relayer y confirmen con:
+El facilitador de producción/staging (`V52_X402_FACILITATOR_URL`, expuesto por ngrok) **estaba caído durante la primera verificación** (`ERR_NGROK_3200` — el túnel no estaba activo). Esto no era un bug del código: el proceso de OpenZeppelin Relayer + su túnel ngrok simplemente no estaba corriendo en ese momento. Antes de depender de x402 en un entorno real, confirmen que el facilitador responde con:
 
 ```bash
 curl -s "$V52_X402_FACILITATOR_URL/supported"
 ```
 
 Si responde con una página de error de ngrok en vez de JSON, el facilitador está offline.
+
+### 5.1 Segunda verificación: settlement real con el facilitador en línea
+
+Una vez reactivado el túnel/relayer, se repitió la prueba contra el **facilitador real** (no el mock) y con una wallet de Avalanche Fuji testnet con fondos reales de prueba (1.5 AVAX + ~20 USDC testnet):
+
+1. `GET /v1/agent/capabilities` → `200`, `ready: true`.
+2. `POST /v1/agent/investigations/wallet-flow` sin pago → `402` con el challenge, generado correctamente contra el `/supported` real del facilitador.
+3. La misma wallet **sin fondos** (efímera, balance 0) → el facilitador real la rechaza limpiamente devolviendo `402` de nuevo (no crashea).
+4. La wallet **con fondos** firma la autorización EIP-712 real → el backend llama `/verify` y `/settle` del facilitador real → **`200 OK`** con el resultado forense, y el header `Payment-Response` (base64) trae:
+   ```json
+   {
+     "success": true,
+     "payer": "0x0f26475928053737C3CCb143Ef9B28F8eDab04C7",
+     "transaction": "0x7b02b0c0cb2055991803ed81bf0a1b09431b6c2cf1166b062a7576c110462daa",
+     "network": "eip155:43113"
+   }
+   ```
+
+Se verificó la transacción directamente contra el RPC de Avalanche Fuji (`get_transaction_receipt`): `status: 1` (éxito), evento `Transfer` en el contrato USDC (`0x5425...Bc65`) por exactamente `1000` unidades atómicas del buyer al `pay_to` configurado en `.env`, con el gas pagado por el signer del relayer (`0x4ff191f9...9Ab8c`) — confirmando `areFeesSponsored: true`. El balance de USDC de la wallet compradora bajó de `19.996` a `19.995` USDC, exactamente el monto cobrado.
+
+Esto cierra la verificación: el ciclo x402 completo (`402` → firma → `verify` → `settle` → `200`) funciona de punta a punta contra infraestructura real, no solo contra un mock.
 
 ### 5.1 Mejora aplicada: 503 claro en vez de 500 opaco
 
