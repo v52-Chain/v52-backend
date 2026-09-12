@@ -184,7 +184,7 @@ async def claim_audit(
         )
         if case_status == CaseStatus.COMPLETE
         else f"Evidence acquisition {case_status.value.lower()}. See warnings for details.",
-        evidence_for=[l0_record] if l0_record.status == EvidenceStatus.COMPLETE else [],
+        evidence_for=[r for r in evidence_records if r.status == EvidenceStatus.COMPLETE],
         evidence_against=[],
         gaps=[
             "Protocol decoding (Uniswap V3 resolver) pending.",

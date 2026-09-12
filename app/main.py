@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import cases, claim_audit, health, verify, wallet_flow
+from app.api import cases, claim_audit, health, verify
 from app.config import get_settings
 
 logging.basicConfig(
@@ -34,10 +34,6 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
 )
 logger = logging.getLogger(__name__)
-# Provider URLs may contain API keys in their path. Keep transport loggers quiet;
-# Vector52 emits its own redacted acquisition events instead.
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
@@ -91,7 +87,6 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health.router)
     app.include_router(claim_audit.router)
-    app.include_router(wallet_flow.router)
     app.include_router(cases.router)
     app.include_router(verify.router)
 

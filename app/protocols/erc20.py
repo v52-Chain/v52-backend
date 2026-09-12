@@ -180,3 +180,4 @@ def decode_transfer_logs(
         )
 
     return sorted(transfers, key=lambda transfer: transfer.log_index)
+

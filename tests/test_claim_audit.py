@@ -1,15 +1,21 @@
 """
 Tests for POST /v1/claim-audit request validation.
 
-These tests run WITHOUT live providers.  They verify that:
+Most of these tests run WITHOUT live providers.  They verify that:
   - Invalid tx hash formats return 422.
   - Unsupported chain IDs return 422.
   - Invalid address formats return 422.
   - Empty claim returns 422.
   - Valid requests are accepted (provider calls may return DEGRADED/FAILED without creds).
+
+One test (test_real_claim_audit_with_live_evidence) exercises the full
+pipeline against real Ethereum RPC and The Graph; it is skipped automatically
+when V52_GRAPH_API_KEY isn't configured.
 """
 
 from __future__ import annotations
+
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -120,3 +126,29 @@ def test_no_secrets_in_error_response(client: TestClient) -> None:
     assert "v52_rpc_url" not in body_text
     assert "bearer" not in body_text
     assert "api_key" not in body_text
+
+
+@pytest.mark.skipif(
+    not os.environ.get("V52_GRAPH_API_KEY"),
+    reason="V52_GRAPH_API_KEY not configured; set it in .env to run live Graph gateway tests",
+)
+def test_real_claim_audit_with_live_evidence(client: TestClient) -> None:
+    """Executes a real audit for a live Uniswap V3 transaction with real RPC and Graph."""
+    real_body = {
+        "chain_id": 1,
+        "transaction_hash": "0xfa98e7528b5855e46e9bf9cbf9040bc3cfb114ca0c50691f392f1816516e000e",
+        "claim": "The subject contributed the entire volume observed in this swap.",
+        "subject": "0xeabd88c92324b709ddc8955ae1ac615c6590da9c",
+        "use_ai": False,
+    }
+    response = client.post("/v1/claim-audit", json=real_body)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["case_id"].startswith("case_1_fa98e752_")
+    assert data["status"] == "COMPLETE"
+    assert len(data["evidence_for"]) >= 2
+    sources = {ev["source"] for ev in data["evidence_for"]}
+    assert "ethereum_rpc" in sources
+    assert "the_graph" in sources
+    assert all(len(ev["raw_sha256"]) == 64 for ev in data["evidence_for"])
+

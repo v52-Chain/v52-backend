@@ -45,7 +45,6 @@ class Settings(BaseSettings):
 
     # ── Ethereum RPC ──────────────────────────────────────────────────────────
     v52_rpc_url: str = Field(default="", alias="V52_RPC_URL")
-    v52_alchemy_eth_rpc_url: str = Field(default="", alias="V52_ALCHEMY_ETH_RPC_URL")
 
     # ── The Graph ─────────────────────────────────────────────────────────────
     v52_graph_endpoint: str = Field(default="", alias="V52_GRAPH_ENDPOINT")
@@ -85,15 +84,6 @@ class Settings(BaseSettings):
         return bool(self.v52_rpc_url)
 
     @property
-    def alchemy_eth_rpc_url(self) -> str:
-        """Alchemy endpoint used by Transfers API, with legacy RPC fallback."""
-        return self.v52_alchemy_eth_rpc_url or self.v52_rpc_url
-
-    @property
-    def alchemy_configured(self) -> bool:
-        return bool(self.alchemy_eth_rpc_url)
-
-    @property
     def graph_configured(self) -> bool:
         return bool(self.v52_graph_endpoint)
 
@@ -126,7 +116,6 @@ class Settings(BaseSettings):
         return {
             "v52_env": self.v52_env,
             "rpc_configured": self.rpc_configured,
-            "alchemy_configured": self.alchemy_configured,
             "graph_configured": self.graph_configured,
             "v52_data_dir": self.v52_data_dir,
             "v52_storage_backend": self.v52_storage_backend,
@@ -135,9 +124,6 @@ class Settings(BaseSettings):
             "v52_mongodb_database": self.v52_mongodb_database,
             # All secrets are redacted:
             "v52_rpc_url": _REDACTED if self.v52_rpc_url else "(not set)",
-            "v52_alchemy_eth_rpc_url": (
-                _REDACTED if self.v52_alchemy_eth_rpc_url else "(not set)"
-            ),
             "v52_graph_api_key": _REDACTED if self.v52_graph_api_key else "(not set)",
             "v52_mongodb_uri": _REDACTED if self.v52_mongodb_uri else "(not set)",
             "v52_ai_api_key": _REDACTED if self.v52_ai_api_key else "(not set)",
