@@ -109,7 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(agent.router)
 
     # ── x402 Payment channel ──────────────────────────────────────────────────
-    configure_x402(app)
+    configure_x402(app, settings)
 
     # ── Global error handler — never expose stack traces in production ─────────
     @app.exception_handler(Exception)
