@@ -25,8 +25,7 @@ def evaluate_predicates(
         p.model_copy(
             update={
                 "reasoning": (
-                    "Predicate evaluation pending Jhamil's implementation. "
-                    + (p.reasoning or "")
+                    "Predicate evaluation pending Jhamil's implementation. " + (p.reasoning or "")
                 )
             }
         )

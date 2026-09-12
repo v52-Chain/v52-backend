@@ -124,7 +124,5 @@ class EvidenceVault:
         if not case_dir.exists():
             return []
         return sorted(
-            str(p.relative_to(self.data_dir))
-            for p in case_dir.iterdir()
-            if p.suffix == ".json"
+            str(p.relative_to(self.data_dir)) for p in case_dir.iterdir() if p.suffix == ".json"
         )

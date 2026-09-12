@@ -4,6 +4,8 @@ Vector52 FastAPI application.
 Starts the API server with:
   - /healthz (no auth)
   - /v1/claim-audit
+  - /v1/auth/wallet/* and /v1/web/* (signed wallet session)
+  - /v1/agent/* (x402 machine channel)
   - /v1/cases/{case_id}
   - /v1/cases/{case_id}/evidence
   - /v1/cases/{case_id}/package
@@ -26,8 +28,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import cases, claim_audit, health, verify
+from app.api import access, agent, cases, claim_audit, health, verify
 from app.config import get_settings
+from app.payments.x402 import configure_x402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,8 +60,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Vector52 API",
         description=(
-            "Evidence-first Ethereum claim auditor. "
-            "Don't just trace the money. Prove the claim."
+            "Evidence-first Ethereum claim auditor. Don't just trace the money. Prove the claim."
         ),
         version="0.1.0",
         docs_url="/docs",
@@ -90,15 +92,24 @@ def create_app() -> FastAPI:
         allow_headers=[
             "Content-Type",
             "Accept",
+            "Authorization",
             "Payment-Signature",
             "Payment-Required",
+            "Payment-Response",
             "X-Payment",
         ],
+        expose_headers=["Payment-Required", "Payment-Response"],
     )
+
+    # Browser requests use wallet-signature sessions. Only the machine-facing
+    # agent route is protected by x402 and only when settlement is configured.
+    configure_x402(app, settings)
 
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health.router)
     app.include_router(claim_audit.router)
+    app.include_router(access.router)
+    app.include_router(agent.router)
     app.include_router(cases.router)
     app.include_router(verify.router)
 

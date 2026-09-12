@@ -102,9 +102,7 @@ class EvidenceAcquisition:
             )
             return record, None
 
-        evidence_id = make_evidence_id(
-            "ethereum_rpc", "acquire", {"tx_hash": tx_hash}
-        )
+        evidence_id = make_evidence_id("ethereum_rpc", "acquire", {"tx_hash": tx_hash})
         request_payload = {"method": "acquire", "tx_hash": tx_hash}
         fingerprint = make_request_fingerprint(request_payload)
         warnings: list[str] = []
