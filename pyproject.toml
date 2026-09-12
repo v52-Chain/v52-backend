@@ -25,6 +25,8 @@ dependencies = [
     "eth-abi>=5.1.0",
     # ── Multipart (package upload) ──────────────────────────────────────────────────
     "python-multipart>=0.0.20",
+    # ── Agent payments (Avalanche Fuji / x402) ───────────────────────────────
+    "x402[evm]>=2.0.0",
 ]
 
 [project.optional-dependencies]

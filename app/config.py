@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # Runtime
     v52_env: str = Field(default="development", alias="V52_ENV")
     v52_cors_origins: str = Field(default="", alias="V52_CORS_ORIGINS")
+    v52_public_origin: str = Field(default="http://localhost:5173", alias="V52_PUBLIC_ORIGIN")
 
     # Legacy single Ethereum RPC. Kept only as a fallback during migration.
     v52_rpc_url: str = Field(default="", alias="V52_RPC_URL")
@@ -117,6 +118,18 @@ class Settings(BaseSettings):
     # AI explanations (optional, non-authoritative)
     v52_ai_enabled: bool = Field(default=False, alias="V52_AI_ENABLED")
     v52_ai_api_key: str = Field(default="", alias="V52_AI_API_KEY")
+
+    # x402 Agent channel (optional)
+    v52_x402_enabled: bool = Field(default=False, alias="V52_X402_ENABLED")
+    v52_x402_facilitator_url: str = Field(default="", alias="V52_X402_FACILITATOR_URL")
+    v52_x402_facilitator_api_key: str = Field(default="", alias="V52_X402_FACILITATOR_API_KEY")
+    v52_x402_pay_to: str = Field(default="", alias="V52_X402_PAY_TO")
+    v52_x402_network: str = Field(default="eip155:43113", alias="V52_X402_NETWORK")
+    v52_x402_asset: str = Field(
+        default="0x5425890298aed601595a70AB815c96711a31Bc65",
+        alias="V52_X402_ASSET",
+    )
+    v52_x402_wallet_flow_price: str = Field(default="1000", alias="V52_X402_WALLET_FLOW_PRICE")
 
     @property
     def is_production(self) -> bool:

@@ -13,10 +13,7 @@ from typing import Any
 
 from app.models.transfer import DecodedTransfer, TokenMetadata
 
-ERC20_TRANSFER_TOPIC = (
-    "0xddf252ad1be2c89b69c2b068fc378daa"
-    "952ba7f163c4a11628f55a4df523b3ef"
-)
+ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 _HEX_32_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")

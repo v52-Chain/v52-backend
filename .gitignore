@@ -29,6 +29,8 @@ wheels/
 
 # ── Test cache and coverage ───────────────────────────────────────────────────
 .pytest_cache/
+.pytest*/
+.test-runtime*/
 .coverage
 htmlcov/
 coverage.xml

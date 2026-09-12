@@ -26,8 +26,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import audits, cases, claim_audit, health, providers, rpc, verify
+from app.api import access, agent, audits, cases, claim_audit, health, providers, rpc, verify, wallet_flow
 from app.config import get_settings
+from app.payments.x402 import configure_x402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -104,6 +105,12 @@ def create_app() -> FastAPI:
     app.include_router(claim_audit.router)
     app.include_router(cases.router)
     app.include_router(verify.router)
+    app.include_router(access.router)
+    app.include_router(agent.router)
+    app.include_router(wallet_flow.router)
+
+    # ── x402 Payment channel ──────────────────────────────────────────────────
+    configure_x402(app)
 
     # ── Global error handler — never expose stack traces in production ─────────
     @app.exception_handler(Exception)
