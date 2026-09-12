@@ -36,3 +36,11 @@ Manual integral de consumo e integración de la API:
 - Catálogo de validaciones de entrada y códigos de error HTTP 422, 400, 404, 413 y 500.
 - Guías y snippets de integración en TypeScript (frontend con tipos `DecodedTransfer`) y Python.
 
+### 3. [Guía de Integración x402 — Servidor MCP y Frontend](./X402_MCP_FRONTEND.md)
+Manual práctico para quien consume (no mantiene) el canal de pagos x402:
+- Qué está implementado hoy (`wallet-flow` M2M) y qué es solo especificación pendiente (claim-audit/anchor/package Nivel 3).
+- Ejemplos completos de cliente x402 para un servidor MCP en TypeScript y en Python.
+- Boceto de integración en el navegador (wallet conectada) para el frontend.
+- Tabla de manejo de errores (402/503/422/500) y verificación end-to-end realizada, incluyendo un fix de robustez (503 claro cuando el facilitador está caído, en vez de 500 opaco).
+- Script de facilitador mock para probar el flujo completo sin depender del relayer real.
+
