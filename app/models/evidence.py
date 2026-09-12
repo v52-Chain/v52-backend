@@ -67,6 +67,19 @@ class EvidenceRecord(BaseModel):
     authority_level: AuthorityLevel
     chain_id: int = Field(ge=1, description="EIP-155 chain ID.  Only chain 1 (Ethereum) for P0.")
     source: str = Field(description="Provider name, e.g. 'ethereum_rpc' or 'the_graph'.")
+    source_type: str | None = Field(
+        default=None,
+        description="Logical evidence source type, e.g. RPC_PROVIDER or INDEXED_PROVIDER.",
+    )
+    provider: str | None = Field(
+        default=None,
+        description="Redacted public provider label, e.g. alchemy or hsk_rpc.",
+    )
+    network: str | None = Field(default=None, description="Logical network name.")
+    endpoint_id: str | None = Field(
+        default=None,
+        description="Redacted endpoint identifier. Never contains API keys.",
+    )
     method: str = Field(
         description="RPC method or GraphQL operation name used to obtain this record."
     )
@@ -85,6 +98,7 @@ class EvidenceRecord(BaseModel):
 
     # Optional fields for The Graph records (L1)
     block_number: int | None = Field(default=None, description="Block number at indexing time.")
+    block_hash: str | None = Field(default=None, description="Block hash when available.")
     indexing_errors: bool | None = Field(
         default=None, description="True if The Graph reported hasIndexingErrors."
     )

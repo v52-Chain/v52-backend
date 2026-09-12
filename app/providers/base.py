@@ -24,6 +24,7 @@ _SECRET_PATTERNS = [
     re.compile(r"(?i)(Authorization:\s*)[^\s]+"),
     # Infura/Alchemy style endpoints that embed keys in the URL path
     re.compile(r"(https?://[^/]+/v\d+/)[A-Za-z0-9_-]{16,}"),
+    re.compile(r"(https?://[^/\s]+/(?:v\d+|api)/)[^\s/?#&]+"),
 ]
 
 
@@ -40,9 +41,31 @@ class ProviderError(Exception):
     The message is always safe to surface in API responses and logs.
     """
 
-    def __init__(self, message: str, status: ProviderStatus = ProviderStatus.FAILED) -> None:
+    def __init__(
+        self,
+        message: str,
+        status: ProviderStatus = ProviderStatus.FAILED,
+        *,
+        code: str = "PROVIDER_ERROR",
+        retryable: bool = False,
+        provider: str | None = None,
+    ) -> None:
         super().__init__(redact(message))
         self.status = status
+        self.code = code
+        self.retryable = retryable
+        self.provider = provider
+
+    def to_api_error(self) -> dict[str, object]:
+        """Return a contract-safe API error payload."""
+        payload: dict[str, object] = {
+            "code": self.code,
+            "message": str(self),
+            "retryable": self.retryable,
+        }
+        if self.provider:
+            payload["provider"] = self.provider
+        return payload
 
 
 class BaseProvider(ABC):

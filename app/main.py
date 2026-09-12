@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import cases, claim_audit, health, verify, wallet_flow
+from app.api import audits, cases, claim_audit, health, providers, rpc, verify, wallet_flow
 from app.config import get_settings
 
 logging.basicConfig(
@@ -90,6 +90,9 @@ def create_app() -> FastAPI:
 
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health.router)
+    app.include_router(providers.router)
+    app.include_router(rpc.router)
+    app.include_router(audits.router)
     app.include_router(claim_audit.router)
     app.include_router(wallet_flow.router)
     app.include_router(cases.router)

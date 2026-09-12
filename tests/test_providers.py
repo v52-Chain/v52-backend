@@ -14,6 +14,7 @@ from httpx import Response, TimeoutException
 
 from app.providers.base import ProviderError, redact
 from app.providers.ethereum_rpc import EthereumRpcProvider
+from app.providers.rpc import AlchemyRpcProvider, RpcErrorCode
 from app.providers.the_graph import TheGraphProvider
 
 RPC_URL = "https://rpc.example.com/v3/testkey"
@@ -126,6 +127,63 @@ async def test_rpc_error_does_not_contain_secret_url() -> None:
 
 
 # ── TheGraphProvider ──────────────────────────────────────────────────────────
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_rpc_validate_chain_id_success() -> None:
+    respx.post(RPC_URL).mock(
+        return_value=Response(200, json={"jsonrpc": "2.0", "id": 1, "result": "0x1"})
+    )
+
+    provider = EthereumRpcProvider(rpc_url=RPC_URL)
+    assert await provider.validate_chain_id() == 1
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_rpc_validate_chain_id_mismatch() -> None:
+    respx.post(RPC_URL).mock(
+        return_value=Response(200, json={"jsonrpc": "2.0", "id": 1, "result": "0xa86a"})
+    )
+
+    provider = EthereumRpcProvider(rpc_url=RPC_URL, expected_chain_id=1)
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.validate_chain_id()
+
+    assert exc_info.value.code == RpcErrorCode.CHAIN_MISMATCH
+    assert "testkey" not in str(exc_info.value)
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_rpc_rate_limit_is_typed() -> None:
+    respx.post(RPC_URL).mock(return_value=Response(429, json={"error": "rate limited"}))
+
+    provider = AlchemyRpcProvider(
+        RPC_URL,
+        expected_chain_id=1,
+        network="ethereum-mainnet",
+        timeout_seconds=1,
+        max_retries=0,
+    )
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.get_transaction(TX_HASH)
+
+    assert exc_info.value.code == RpcErrorCode.PROVIDER_RATE_LIMIT
+    assert exc_info.value.retryable is True
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_rpc_malformed_json_is_typed() -> None:
+    respx.post(RPC_URL).mock(return_value=Response(200, content=b"not-json"))
+
+    provider = EthereumRpcProvider(rpc_url=RPC_URL)
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.get_transaction(TX_HASH)
+
+    assert exc_info.value.code == RpcErrorCode.PROVIDER_INVALID_RESPONSE
+
 
 def test_graph_provider_requires_endpoint() -> None:
     with pytest.raises(ProviderError, match="V52_GRAPH_ENDPOINT"):

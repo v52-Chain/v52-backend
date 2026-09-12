@@ -1,15 +1,4 @@
-"""
-Claim models — Request / Response and CaseRecord Pydantic schemas.
-
-Contract owner: Saúl (Pydantic models) + Omar (frontend contract).
-Any field change requires review from both developers.
-
-Validated rules:
-  - chain_id must be 1 (Ethereum only for P0)
-  - transaction_hash must be 66-char hex string starting with 0x
-  - subject must be 42-char hex address starting with 0x
-  - claim must be non-empty, max 1000 chars
-"""
+"""Claim, case and audit response models."""
 
 from __future__ import annotations
 
@@ -21,13 +10,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.evidence import EvidenceRecord, EvidenceStatus
 from app.models.protocol import ProtocolAction
+from app.models.reconciliation import ReconciliationResult
 from app.models.verdict import Verdict
 
-# ── Validation patterns ───────────────────────────────────────────────────────
 _TX_HASH_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
-SUPPORTED_CHAIN_IDS = {1}  # Ethereum mainnet only for P0
+SUPPORTED_CHAIN_IDS = {1, 177, 43113, 43114}
 
 
 class CaseStatus(StrEnum):
@@ -36,8 +25,10 @@ class CaseStatus(StrEnum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
     DEGRADED = "DEGRADED"
     FAILED = "FAILED"
+    UNKNOWN = "UNKNOWN"
 
 
 class Predicate(BaseModel):
@@ -51,8 +42,16 @@ class Predicate(BaseModel):
     reasoning: str | None = None
 
 
+class TokenAmountValue(BaseModel):
+    """Integer/string token amount. Never use floats for money."""
+
+    raw: str
+    decimals: int | None = None
+    symbol: str | None = None
+
+
 class ContributionSummary(BaseModel):
-    """Subject contribution summary — amounts in string form to avoid float errors."""
+    """Subject contribution summary using strings for exact amounts."""
 
     subject: str
     amount_in_raw: str | None = None
@@ -60,6 +59,13 @@ class ContributionSummary(BaseModel):
     token_in_symbol: str | None = None
     token_out_symbol: str | None = None
     percentage_of_pool_volume: str | None = None
+    counterparty_volume: TokenAmountValue | None = None
+    case_flow: TokenAmountValue | None = None
+    attributable_value: TokenAmountValue | None = None
+    unknown_or_unattributable: TokenAmountValue | None = None
+    methodology_version: str = "v52-contribution-0.1.0"
+    evidence_ids: list[str] = Field(default_factory=list)
+    limits: dict[str, int] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -74,63 +80,49 @@ class ProvenanceSummary(BaseModel):
     adapter_versions: list[str] = Field(default_factory=list)
 
 
-# ── Request ───────────────────────────────────────────────────────────────────
-
-
 class ClaimAuditRequest(BaseModel):
-    """
-    Minimum request payload for POST /v1/claim-audit.
-    Validates chain ID, tx hash format, claim length and subject address format.
-    """
+    """Minimum request payload for POST /v1/claim-audit and /v1/audits."""
 
-    chain_id: int = Field(
-        description="EIP-155 chain ID.  Only Ethereum mainnet (1) is supported in P0."
-    )
+    chain_id: int = Field(description="EIP-155 chain ID.")
     transaction_hash: str = Field(
         description="Full 32-byte transaction hash in hex, prefixed with 0x."
     )
-    claim: str = Field(min_length=1, max_length=1000, description="Human-readable claim to audit.")
-    subject: str = Field(description="Ethereum address of the alleged subject (0x…).")
+    claim: str = Field(min_length=1, max_length=1000, description="Human-readable claim.")
+    subject: str = Field(description="EVM address of the subject under analysis.")
     use_ai: bool = Field(
         default=False,
-        description="If true, an AI explanation (L5) is appended.  Non-authoritative.",
+        description="If true, an AI explanation may be appended. Non-authoritative.",
     )
 
     @field_validator("chain_id")
     @classmethod
-    def validate_chain_id(cls, v: int) -> int:
-        if v not in SUPPORTED_CHAIN_IDS:
-            msg = f"chain_id {v} is not supported.  Supported: {sorted(SUPPORTED_CHAIN_IDS)}."
+    def validate_chain_id(cls, value: int) -> int:
+        if value not in SUPPORTED_CHAIN_IDS:
+            msg = f"chain_id {value} is not supported. Supported: {sorted(SUPPORTED_CHAIN_IDS)}."
             raise ValueError(msg)
-        return v
+        return value
 
     @field_validator("transaction_hash")
     @classmethod
-    def validate_tx_hash(cls, v: str) -> str:
-        if not _TX_HASH_RE.match(v):
+    def validate_tx_hash(cls, value: str) -> str:
+        if not _TX_HASH_RE.match(value):
             raise ValueError(
                 "transaction_hash must be a 0x-prefixed 64-character hex string (32 bytes)."
             )
-        return v.lower()
+        return value.lower()
 
     @field_validator("subject")
     @classmethod
-    def validate_subject(cls, v: str) -> str:
-        if not _ADDRESS_RE.match(v):
+    def validate_subject(cls, value: str) -> str:
+        if not _ADDRESS_RE.match(value):
             raise ValueError(
                 "subject must be a 0x-prefixed 40-character hex string (20 bytes / EVM address)."
             )
-        return v.lower()
-
-
-# ── Response ──────────────────────────────────────────────────────────────────
+        return value.lower()
 
 
 class ClaimAuditResponse(BaseModel):
-    """
-    Minimum response payload from POST /v1/claim-audit.
-    Frontend never receives provider secrets or raw credentials.
-    """
+    """Response payload from the audit pipeline."""
 
     case_id: str
     status: CaseStatus
@@ -143,21 +135,16 @@ class ClaimAuditResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     protocol_action: ProtocolAction | None = None
     contribution: ContributionSummary | None = None
+    reconciliation: list[ReconciliationResult] = Field(default_factory=list)
     provenance: ProvenanceSummary | None = None
     timing_ms: dict[str, int] = Field(
         default_factory=dict,
-        description="Milliseconds per pipeline stage.  No credentials in keys or values.",
+        description="Milliseconds per pipeline stage. No credentials in keys or values.",
     )
 
 
-# ── Case Record ───────────────────────────────────────────────────────────────
-
-
 class CaseRecord(BaseModel):
-    """
-    Persisted case metadata (written to file-based store in P0, MongoDB in P1).
-    Raw evidence is referenced by path + hash, never duplicated here.
-    """
+    """Persisted case metadata. Raw evidence is referenced by path and hash."""
 
     case_id: str
     chain_id: int

@@ -13,9 +13,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Set environment before importing app modules.
-os.environ.setdefault("V52_ENV", "development")
-os.environ.setdefault("V52_RPC_URL", "")
-os.environ.setdefault("V52_GRAPH_ENDPOINT", "")
+os.environ["V52_ENV"] = "development"
+os.environ["V52_RPC_URL"] = ""
+os.environ["ALCHEMY_ETH_RPC_URL"] = ""
+os.environ["ALCHEMY_AVAX_RPC_URL"] = ""
+os.environ["HSK_RPC_URL"] = ""
+os.environ["V52_ALCHEMY_ETH_RPC_URL"] = ""
+os.environ["V52_ALCHEMY_AVAX_RPC_URL"] = ""
+os.environ["V52_HSK_RPC_URL"] = ""
+os.environ["V52_GRAPH_ENDPOINT"] = ""
 
 from app.config import invalidate_settings
 from app.main import app
