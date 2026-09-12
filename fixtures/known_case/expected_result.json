@@ -1,0 +1,42 @@
+{
+  "fixture_version": "1.0.0",
+  "chain_id": 1,
+  "transaction_hash": "0xc2b4b16efc7d871210ef7f48a404cd3353859ac0f2717e4b97d2268e5d62c865",
+  "subject": "0xe0a36930f4b1e0a06788bf3d3a860db999bb4210",
+  "router": "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45",
+  "pool": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+  "transfers": [
+    {
+      "log_index": 25,
+      "token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "token_symbol": "USDC",
+      "token_decimals": 6,
+      "from_address": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+      "to_address": "0xe0a36930f4b1e0a06788bf3d3a860db999bb4210",
+      "amount_raw": "17112191",
+      "amount_formatted": "17.112191"
+    },
+    {
+      "log_index": 27,
+      "token_address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "token_symbol": "WETH",
+      "token_decimals": 18,
+      "from_address": "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45",
+      "to_address": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+      "amount_raw": "10000000000000000",
+      "amount_formatted": "0.01"
+    }
+  ],
+  "swap": {
+    "log_index": 28,
+    "amount0_raw": "-17112191",
+    "amount1_raw": "10000000000000000",
+    "token0": "USDC",
+    "token1": "WETH"
+  },
+  "claims": {
+    "demonstrated": "The subject received exactly 17.112191 USDC in this transaction.",
+    "inflated": "The subject contributed the entire USDC/WETH pool volume.",
+    "insufficient": "The subject controlled SwapRouter02."
+  }
+}

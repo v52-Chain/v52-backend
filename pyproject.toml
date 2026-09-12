@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vector52-backend"
+version = "0.1.0"
+description = "Vector52 — Claim Audit API: evidence-first Ethereum transaction auditor"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Saúl" }]
+
+dependencies = [
+    # ── API framework ────────────────────────────────────────────────────────────
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.32.1",
+    # ── Validation and configuration ──────────────────────────────────────────────
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.7.0",
+    "python-dotenv>=1.0.1",
+    # ── HTTP client (RPC + GraphQL) ─────────────────────────────────────────────────
+    "httpx>=0.28.1",
+    # ── Ethereum ───────────────────────────────────────────────────────────────────
+    "web3>=7.7.0",
+    "eth-abi>=5.1.0",
+    # ── Multipart (package upload) ──────────────────────────────────────────────────
+    "python-multipart>=0.0.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.2",
+    "pytest-mock>=3.14.0",
+    "httpx>=0.28.1",      # for TestClient
+    "ruff>=0.9.2",
+    "respx>=0.21.1",      # httpx mock for provider tests
+]
+mongo = [
+    "pymongo[srv]==4.10.1",   # P1: activate when file-backed flow works
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+log_cli = true
+log_cli_level = "INFO"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]

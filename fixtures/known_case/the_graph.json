@@ -1,0 +1,13 @@
+{
+  "fixture_version": "1.0.0",
+  "status": "NOT_ACQUIRED",
+  "provider": "the_graph",
+  "subgraph_id": "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
+  "endpoint_template": "https://gateway.thegraph.com/api/<API_KEY>/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
+  "variables": {
+    "txHash": "0xc2b4b16efc7d871210ef7f48a404cd3353859ac0f2717e4b97d2268e5d62c865"
+  },
+  "query": "query KnownCase($txHash: String!) { _meta { block { number hash } deployment hasIndexingErrors } swaps(where: { transaction: $txHash }) { id transaction { id blockNumber timestamp } pool { id token0 { id symbol decimals } token1 { id symbol decimals } } sender recipient amount0 amount1 sqrtPriceX96 liquidity tick origin logIndex } }",
+  "reason": "The current decentralized Graph endpoint requires a project API key. No local V52_GRAPH_API_KEY was configured, so no response was fabricated.",
+  "replacement_instructions": "Run this query through backend/app/providers/the_graph.py with a local API key, review the response, then replace this record with the sanitized raw provider payload."
+}

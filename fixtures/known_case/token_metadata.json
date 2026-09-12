@@ -1,0 +1,20 @@
+{
+  "fixture_version": "1.0.0",
+  "block_number": 15288837,
+  "tokens": [
+    {
+      "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "symbol": "USDC",
+      "decimals": 6,
+      "source": "https://developers.circle.com/stablecoins/usdc-contract-addresses",
+      "notes": "Circle documents the Ethereum contract; Circle documentation also specifies 6-decimal native USDC."
+    },
+    {
+      "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "symbol": "WETH",
+      "decimals": 18,
+      "source": "https://etherscan.io/address/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "notes": "Canonical Ethereum WETH9 contract metadata."
+    }
+  ]
+}
