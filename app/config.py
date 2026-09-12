@@ -42,6 +42,7 @@ class Settings(BaseSettings):
 
     # ── Runtime ───────────────────────────────────────────────────────────────
     v52_env: str = Field(default="development", alias="V52_ENV")
+    v52_cors_origins: str = Field(default="", alias="V52_CORS_ORIGINS")
 
     # ── Ethereum RPC ──────────────────────────────────────────────────────────
     v52_rpc_url: str = Field(default="", alias="V52_RPC_URL")
@@ -79,6 +80,15 @@ class Settings(BaseSettings):
     @property
     def data_dir(self) -> Path:
         return Path(self.v52_data_dir)
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Explicit browser origins allowed to call the API; never use a wildcard in production."""
+        return [
+            origin.strip().rstrip("/")
+            for origin in self.v52_cors_origins.split(",")
+            if origin.strip()
+        ]
 
     @property
     def rpc_configured(self) -> bool:
@@ -125,6 +135,7 @@ class Settings(BaseSettings):
         """Return a dict safe to log — secrets are redacted."""
         return {
             "v52_env": self.v52_env,
+            "cors_origins": self.cors_origins,
             "rpc_configured": self.rpc_configured,
             "alchemy_configured": self.alchemy_configured,
             "graph_configured": self.graph_configured,

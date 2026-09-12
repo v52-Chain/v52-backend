@@ -29,9 +29,15 @@ async def wallet_flow(
     settings: Settings = Depends(get_settings),
 ) -> WalletFlowResponse:
     if chain_id != 1:
-        raise HTTPException(status_code=422, detail="Only Ethereum Mainnet (chain_id 1) is supported in this MVP.")
+        raise HTTPException(
+            status_code=422,
+            detail="Only Ethereum Mainnet (chain_id 1) is supported in this MVP.",
+        )
     if not _ADDRESS.fullmatch(address):
-        raise HTTPException(status_code=422, detail="Address must be 0x followed by 40 hexadecimal characters.")
+        raise HTTPException(
+            status_code=422,
+            detail="Address must be 0x followed by 40 hexadecimal characters.",
+        )
     if not settings.alchemy_configured:
         raise HTTPException(
             status_code=503,
@@ -48,7 +54,8 @@ async def wallet_flow(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     warnings = [
-        "This view contains direct native/ERC-20 transfers only; internal protocol semantics are not inferred.",
+        "This view contains direct native/ERC-20 transfers only; "
+        "internal protocol semantics are not inferred.",
         "A connection is evidence of transfer, not proof of identity, ownership or wrongdoing.",
     ]
     return WalletFlowResponse(

@@ -67,7 +67,10 @@ def test_wallet_flow_returns_normalized_directions(client) -> None:
             "rawContract": {"address": None if incoming else "0x" + "d" * 40},
             "metadata": {"blockTimestamp": "2026-09-12T12:00:00Z"},
         }
-        return Response(200, json={"jsonrpc": "2.0", "id": body["id"], "result": {"transfers": [transfer]}})
+        return Response(
+            200,
+            json={"jsonrpc": "2.0", "id": body["id"], "result": {"transfers": [transfer]}},
+        )
 
     respx.post(ALCHEMY_URL).mock(side_effect=responder)
     app.dependency_overrides[get_settings] = _settings
