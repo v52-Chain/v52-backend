@@ -25,7 +25,7 @@ No hay que tocarlas — se listan aquí para referencia al depurar:
 | Variable | Rol |
 |---|---|
 | `V52_X402_ENABLED` | Interruptor maestro del canal de pago. |
-| `V52_X402_FACILITATOR_URL` | URL del facilitador (OpenZeppelin Relayer + plugin x402, expuesto vía ngrok en desarrollo). |
+| `V52_X402_FACILITATOR_URL` | URL base del facilitador, expuesta vía ngrok en desarrollo. **⚠️ Formato verificado 2026-09-12: el facilitador real (`x402-facilitator-local`) expone rutas PLANAS `/supported`, `/verify`, `/settle` directamente sobre el dominio ngrok — NO el prefijo `/api/v1/plugins/x402/call/*` que documentaba `v52-onchain/x402-test/README.md` para el plugin OpenZeppelin Relayer.** Agregar ese prefijo produce `404` en todas las llamadas. Ver §5.2 para la verificación completa. |
 | `V52_X402_FACILITATOR_API_KEY` | Bearer token que el backend usa para autenticarse contra el facilitador (`/supported`, `/verify`, `/settle`). **Nunca se expone al cliente MCP ni al frontend** — es un secreto servidor-a-servidor. |
 | `V52_X402_PAY_TO` | Address que recibe el pago (wallet del proyecto). |
 | `V52_X402_NETWORK` | Red CAIP-2, hoy `eip155:43113` (Avalanche Fuji testnet). |
@@ -256,7 +256,7 @@ Se verificó la transacción directamente contra el RPC de Avalanche Fuji (`get_
 
 Esto cierra la verificación: el ciclo x402 completo (`402` → firma → `verify` → `settle` → `200`) funciona de punta a punta contra infraestructura real, no solo contra un mock.
 
-### 5.1 Mejora aplicada: 503 claro en vez de 500 opaco
+### 5.2 Mejora aplicada: 503 claro en vez de 500 opaco
 
 Se detectó que, si el facilitador está inalcanzable, el middleware de `x402` (`x402ResourceServer.initialize()`) lanza una excepción sin capturar que llegaba al cliente como `500 Internal Server Error` genérico — indistinguible de un bug real del backend. Se agregó `FacilitatorFailoverMiddleware` en `app/payments/x402.py` que traduce ese caso puntual en:
 
@@ -268,6 +268,39 @@ Se detectó que, si el facilitador está inalcanzable, el middleware de `x402` (
 ```
 
 con status `503`. **El servidor MCP y el frontend deben tratar este `503` como retryable** (backoff y reintento), a diferencia de un `402` (que requiere una firma nueva) o un `500` genuino (bug, no reintentar sin investigar).
+
+### 5.3 Tercera verificación (2026-09-12): ruta correcta del facilitador + pago real repetido
+
+Se repitió el ciclo completo contra el facilitador real usando la wallet de prueba del equipo (`0x0f26475928053737C3CCb143Ef9B28F8eDab04C7`, 1.5 AVAX + ~20 USDC en Fuji) para confirmar dos cosas: (1) el formato correcto de `V52_X402_FACILITATOR_URL` y (2) que el ciclo sigue funcionando de punta a punta con una wallet fondeada distinta a la de la verificación original de §5.1.
+
+**Hallazgo — formato de URL corregido.** El facilitador real que responde detrás del túnel ngrok actual se identifica a sí mismo como `x402-facilitator-local` (no el plugin OpenZeppelin Relayer usado en `v52-onchain/x402-test`) y expone rutas **planas**:
+
+```bash
+curl https://<dominio-ngrok>/supported   # 200 OK
+curl https://<dominio-ngrok>/verify      # 200 OK (GET muestra el schema esperado; el uso real es POST)
+curl https://<dominio-ngrok>/settle      # 200 OK (idem)
+```
+
+Probar con el prefijo documentado en `v52-onchain/x402-test/README.md` (`/api/v1/plugins/x402/call/supported`, etc.) devuelve `404` — ese prefijo es específico del plugin OpenZeppelin Relayer y no aplica a este facilitador. **`V52_X402_FACILITATOR_URL` debe ser el dominio ngrok desnudo, sin sufijo.**
+
+**Resultado del ciclo completo:**
+
+1. `GET /v1/agent/capabilities` → `200`, `ready: true`, sin warnings.
+2. `POST /v1/agent/investigations/wallet-flow` sin pago → `402` con el challenge decodificado confirmando `network: eip155:43113`, `asset: 0x5425...Bc65`, `amount: 1000`, `payTo` igual al `V52_X402_PAY_TO` del `.env`.
+3. Cliente Python (`x402HttpxClient`, mismo patrón de §4.3) firma automáticamente y reintenta → **`200 OK`**.
+4. Header `Payment-Response` decodificado:
+   ```json
+   {
+     "success": true,
+     "payer": "0x0f26475928053737C3CCb143Ef9B28F8eDab04C7",
+     "transaction": "0x3d3a286c5cc3fcde20a59448a5e050b5e6c646652daf500ad47be1c9047652db",
+     "network": "eip155:43113"
+   }
+   ```
+5. Verificación independiente contra RPC de Avalanche Fuji (`eth_getTransactionReceipt`): `status: 0x1` (éxito), bloque `58338308`, 2 logs emitidos por el contrato USDC.
+6. Balance de la wallet compradora: `19.994 → 19.993` USDC — exactamente `1000` unidades atómicas cobradas.
+
+Esto reconfirma end-to-end el mismo resultado de §5.1 con una sesión de facilitador distinta, y corrige la documentación de la URL para que el próximo integrante (MCP o frontend) no pierda tiempo con el prefijo incorrecto.
 
 ---
 
