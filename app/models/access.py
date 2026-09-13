@@ -111,3 +111,29 @@ class AgentCapabilitiesResponse(BaseModel):
     automatic_payment_owner: Literal["MCP_CLIENT"] = "MCP_CLIENT"
     defi_intel: AgentDefiIntelCapabilities | None = None
     warnings: list[str] = Field(default_factory=list)
+
+
+class WebCapabilitiesResponse(BaseModel):
+    """Mirrors AgentCapabilitiesResponse for the browser-wallet channel.
+
+    The frontend (PaidWalletFlow / x402Payment.ts) builds its x402 spend
+    policy directly from this payload before signing, so its shape must stay
+    in lockstep with AgentCapabilitiesResponse.
+    """
+
+    channel: Literal["WEB_X402"] = "WEB_X402"
+    ready: bool
+    endpoint: Literal["/v1/web/investigations/wallet-flow"] = (
+        "/v1/web/investigations/wallet-flow"
+    )
+    payment_protocol: Literal["x402"] = "x402"
+    network: str
+    asset: str
+    pay_to: str
+    amount_atomic: str
+    amount_display: str
+    asset_decimals: Literal[6] = 6
+    billing_model: Literal["PER_REQUEST"] = "PER_REQUEST"
+    automatic_payment_owner: Literal["CONNECTED_WALLET"] = "CONNECTED_WALLET"
+    authentication: Literal["SIGNED_CHALLENGE"] = "SIGNED_CHALLENGE"
+    warnings: list[str] = Field(default_factory=list)

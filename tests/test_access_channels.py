@@ -95,6 +95,18 @@ def test_agent_capabilities_fail_closed_when_x402_is_disabled(client) -> None:
     assert paid_route.status_code == 503
 
 
+def test_web_capabilities_fail_closed_when_x402_is_disabled(client) -> None:
+    capabilities = client.get("/v1/web/capabilities")
+
+    assert capabilities.status_code == 200
+    body = capabilities.json()
+    assert body["ready"] is False
+    assert body["channel"] == "WEB_X402"
+    assert body["endpoint"] == "/v1/web/investigations/wallet-flow"
+    assert body["automatic_payment_owner"] == "CONNECTED_WALLET"
+    assert body["authentication"] == "SIGNED_CHALLENGE"
+
+
 def test_x402_middleware_can_be_configured_without_contacting_facilitator() -> None:
     from fastapi import FastAPI
 
@@ -110,4 +122,30 @@ def test_x402_middleware_can_be_configured_without_contacting_facilitator() -> N
     assert any(
         middleware.cls.__name__ == "PaymentMiddlewareASGI"
         for middleware in x402_app.user_middleware
+    )
+
+
+def test_x402_routes_register_the_browser_wallet_flow_endpoint() -> None:
+    """The web channel must be payment-gated exactly like the agent channel —
+    not just session-gated — or the frontend's x402-signed request never
+    receives a 402 challenge to respond to."""
+    from fastapi import FastAPI
+
+    x402_app = FastAPI()
+    settings = Settings(
+        V52_X402_ENABLED=True,
+        V52_X402_FACILITATOR_URL="https://relayer.example/api/v1/plugins/x402/call",
+        V52_X402_FACILITATOR_API_KEY="test-only-relayer-token",
+        V52_X402_PAY_TO="0x" + "1" * 40,
+    )
+    configure_x402(x402_app, settings)
+
+    payment_middleware = next(
+        m for m in x402_app.user_middleware if m.cls.__name__ == "PaymentMiddlewareASGI"
+    )
+    routes = payment_middleware.kwargs["routes"]
+
+    assert "POST /v1/web/investigations/wallet-flow" in routes
+    assert routes["POST /v1/web/investigations/wallet-flow"].accepts[0].price["amount"] == (
+        settings.v52_x402_wallet_flow_price
     )

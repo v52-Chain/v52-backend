@@ -111,7 +111,12 @@ def configure_x402(app: FastAPI, settings: Settings) -> None:
         "POST /v1/agent/investigations/wallet-flow": RouteConfig(
             accepts=[_option(settings.v52_x402_wallet_flow_price)],
             mime_type="application/json",
-            description="Vector52 wallet-flow forensic acquisition",
+            description="Vector52 wallet-flow forensic acquisition (MCP agent channel)",
+        ),
+        "POST /v1/web/investigations/wallet-flow": RouteConfig(
+            accepts=[_option(settings.v52_x402_wallet_flow_price)],
+            mime_type="application/json",
+            description="Vector52 wallet-flow forensic acquisition (browser wallet channel)",
         ),
         # DeFi Subgraph Intel — priced by query cost/value (docs/SUBGRAPHS.md §4):
         # a single chain's top pools is cheapest, a per-pool swap drill-down
