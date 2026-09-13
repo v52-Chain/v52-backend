@@ -90,7 +90,53 @@ Siempre resolver `GET /v1/agent/capabilities` antes de exponer la herramienta MC
 
 > ⚠️ `ready: true` solo certifica que el backend tiene la configuración completa — **no garantiza que el facilitador esté vivo en ese instante**. Ver §6 para el caso de facilitador caído.
 
-### 4.2 Opción A — TypeScript / Node (recomendado, mismo stack que `v52-onchain/x402-test/buyer`)
+### 4.2 Opción A — `v52-mcp` TypeScript / Node (recomendado)
+
+El repo hermano `v52-mcp` ya expone la tool `vector52_wallet_flow`, que llama
+este endpoint exacto:
+
+```http
+POST {VECTOR52_API_URL}/v1/agent/investigations/wallet-flow
+```
+
+Configuración local contra `v52-backend` en `127.0.0.1:8000`:
+
+```dotenv
+VECTOR52_API_URL=http://127.0.0.1:8000
+X402_ALLOW_LOCALHOST=true
+X402_ALLOWED_HOSTS=
+X402_NETWORK=eip155:43113
+X402_USDC_ADDRESS=0x5425890298aed601595a70AB815c96711a31Bc65
+X402_FACILITATOR_URL=https://<dominio-ngrok-del-facilitador>
+X402_AGENT_PRIVATE_KEY=0x...
+X402_MAX_PAYMENT_USDC=0.001
+```
+
+Configuración contra el backend desplegado:
+
+```dotenv
+VECTOR52_API_URL=https://v52-backend.onrender.com
+X402_ALLOW_LOCALHOST=false
+X402_ALLOWED_HOSTS=v52-backend.onrender.com
+X402_NETWORK=eip155:43113
+X402_USDC_ADDRESS=0x5425890298aed601595a70AB815c96711a31Bc65
+X402_FACILITATOR_URL=https://<dominio-ngrok-del-facilitador>
+X402_AGENT_PRIVATE_KEY=0x...
+X402_MAX_PAYMENT_USDC=0.001
+```
+
+Uso desde Codex/MCP:
+
+```text
+Usa vector52_wallet_flow con targetAddress "0x..." y maxPaymentUsdc "0.001".
+```
+
+`X402_MERCHANT_ADDRESS` solo es necesario para la demo interna
+`/demo/x402/premium-report` de `v52-mcp`; para pagar a `v52-backend`, el
+destinatario (`payTo`) viene dentro del `Payment-Required` generado por el
+backend y se valida antes de firmar.
+
+### 4.3 Cliente TypeScript / Node mínimo
 
 ```bash
 npm install @x402/fetch @x402/core @x402/evm viem
@@ -141,7 +187,7 @@ export async function walletFlowTool(args: {
 
 `wrapFetchWithPayment` hace todo el ciclo 402 → firma → reintento automáticamente; el handler de la tool MCP solo necesita capturar 503/errores de red para decidir si reintenta.
 
-### 4.3 Opción B — Python (misma librería `x402` que usa el backend)
+### 4.4 Opción B — Python (misma librería `x402` que usa el backend)
 
 Verificado en este entorno con un cliente real contra el backend (ver §5): funciona con `x402HttpxClient`, que envuelve `httpx.AsyncClient` con el ciclo de pago automático.
 
@@ -211,9 +257,9 @@ async def acquire_wallet_flow(target_address: str, chain_id: int = 1, limit: int
         return response.json()
 ```
 
-### 4.4 Nota sobre `x402.mcp` (paradigma alternativo, no usado aquí)
+### 4.5 Nota sobre `x402.mcp` (paradigma alternativo, no usado aquí)
 
-La librería `x402` incluye un submódulo `x402.mcp` (`create_x402_mcp_client`, `x402MCPSession`) pensado para cuando **el propio servidor MCP es el resource server** y cobra por llamada a `tool` a través del canal MCP (payload de pago viajando en `_meta` de `call_tool`, no como header HTTP). **No es el caso de Vector52**: aquí el servidor MCP es un *cliente* HTTP normal que paga un backend REST externo. Se documenta para evitar que se mezcle con el patrón correcto (§4.2/4.3) si en el futuro Vector52 expone su propio servidor MCP nativo.
+La librería `x402` incluye un submódulo `x402.mcp` (`create_x402_mcp_client`, `x402MCPSession`) pensado para cuando **el propio servidor MCP es el resource server** y cobra por llamada a `tool` a través del canal MCP (payload de pago viajando en `_meta` de `call_tool`, no como header HTTP). **No es el caso de Vector52**: aquí el servidor MCP es un *cliente* HTTP normal que paga un backend REST externo. Se documenta para evitar que se mezcle con el patrón correcto (§4.2/§4.3/§4.4) si en el futuro Vector52 expone su propio servidor MCP nativo.
 
 ---
 
@@ -287,7 +333,7 @@ Probar con el prefijo documentado en `v52-onchain/x402-test/README.md` (`/api/v1
 
 1. `GET /v1/agent/capabilities` → `200`, `ready: true`, sin warnings.
 2. `POST /v1/agent/investigations/wallet-flow` sin pago → `402` con el challenge decodificado confirmando `network: eip155:43113`, `asset: 0x5425...Bc65`, `amount: 1000`, `payTo` igual al `V52_X402_PAY_TO` del `.env`.
-3. Cliente Python (`x402HttpxClient`, mismo patrón de §4.3) firma automáticamente y reintenta → **`200 OK`**.
+3. Cliente Python (`x402HttpxClient`, mismo patrón de §4.4) firma automáticamente y reintenta → **`200 OK`**.
 4. Header `Payment-Response` decodificado:
    ```json
    {

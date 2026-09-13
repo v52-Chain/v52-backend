@@ -39,15 +39,18 @@ Manual integral de consumo e integración de la API:
 - Catálogo de validaciones de entrada y códigos de error HTTP 422, 400, 404, 413 y 500.
 - Guías y snippets de integración en TypeScript (frontend con tipos `DecodedTransfer`) y Python.
 
-### 3. [Guía de Integración x402 — Servidor MCP y Frontend](./X402_MCP_FRONTEND.md)
-Manual práctico para quien consume (no mantiene) el canal de pagos x402:
+### 3. [Guía de Integración x402 — Servidor MCP](./X402_MCP.md)
+Manual práctico para quien consume (no mantiene) el canal de pagos x402 desde MCP:
 - Qué está implementado hoy (`wallet-flow` M2M) y qué es solo especificación pendiente (claim-audit/anchor/package Nivel 3).
 - Ejemplos completos de cliente x402 para un servidor MCP en TypeScript y en Python.
-- Boceto de integración en el navegador (wallet conectada) para el frontend.
 - Tabla de manejo de errores (402/503/422/500) y verificación end-to-end realizada, incluyendo un fix de robustez (503 claro cuando el facilitador está caído, en vez de 500 opaco).
 - Script de facilitador mock para probar el flujo completo sin depender del relayer real.
 
-### 4. Anclaje HSK — `V52EvidenceRegistry`
+### 4. [Guía de Integración x402 — Frontend](./X402_FRONTEND.md)
+Manual para la PWA: el flujo humano actual usa SIWE, no x402; deja el patrón
+preparado para endpoints premium futuros con wallet conectada.
+
+### 5. Anclaje HSK — `V52EvidenceRegistry`
 Ver [`FUNCIONAMIENTO.md` §14](./FUNCIONAMIENTO.md#14-anclaje-hsk-apponchain-appapianchorpy)
 para la arquitectura del cliente (`app/onchain/hsk_registry.py`) y
 [`API.md` §3.16](./API.md#316-anclaje-hsk-v52evidenceregistry) para el

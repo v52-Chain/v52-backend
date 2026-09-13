@@ -74,13 +74,18 @@ Para habilitar el canal de pago M2M para servidores MCP y agentes de IA:
 
 ```dotenv
 V52_X402_ENABLED=true
-V52_X402_FACILITATOR_URL=https://tu-relayer.ngrok-free.dev/api/v1/plugins/x402/call
+V52_X402_FACILITATOR_URL=https://tu-relayer.ngrok-free.dev
 V52_X402_FACILITATOR_API_KEY=tu_api_key_del_relayer
 V52_X402_PAY_TO=0xf92A1E3Fa1a163FEeB8c3753165410374fB08339
 V52_X402_NETWORK=eip155:43113
 V52_X402_ASSET=0x5425890298aed601595a70AB815c96711a31Bc65
 V52_X402_WALLET_FLOW_PRICE=1000
 ```
+
+`V52_X402_FACILITATOR_URL` debe ser el dominio base del facilitador activo
+cuando este expone rutas planas (`/supported`, `/verify`, `/settle`). No
+agregar `/api/v1/plugins/x402/call` salvo que realmente se esté usando el
+plugin OpenZeppelin Relayer con ese prefijo.
 
 Las API keys y URLs de providers son backend-only. No deben aparecer en `VITE_*`,
 respuestas HTTP, logs, screenshots ni expedientes `.v52`.
