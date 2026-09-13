@@ -302,6 +302,36 @@ Probar con el prefijo documentado en `v52-onchain/x402-test/README.md` (`/api/v1
 
 Esto reconfirma end-to-end el mismo resultado de §5.1 con una sesión de facilitador distinta, y corrige la documentación de la URL para que el próximo integrante (MCP o frontend) no pierda tiempo con el prefijo incorrecto.
 
+### 5.4 Investigación (2026-09-12): "los tests pasan pero el pago real falla" para algunos integrantes
+
+Un integrante del equipo reportó que, aunque la suite de tests pasa, los pagos reales fallan al probar desde su máquina, con la teoría de que había "un problema con el JSON entre TS y Python". Se investigó reproduciendo el escenario exacto: cliente TypeScript real (`@x402/fetch` + `@x402/core` + `@x402/evm`, sin ningún workaround de red) contra el backend Python real.
+
+**Resultado: el stack TS↔Python funciona correctamente.** Se verificó dos veces, con transacciones reales distintas:
+
+1. Contra el backend corriendo en local (`127.0.0.1`) → `paymentStatus: "settled"`, tx `0xeef8fba99a6f672414efe2b34703f914fe9f3dba651655b2e187e028e8a87f23`.
+2. Contra el backend **desplegado en Render** (`https://v52-backend.onrender.com`, producción real) → `paymentStatus: "settled"`, tx `0x187edecb13dae081798a69a4a11a41d2fd1e5a42b61700104de89ebbe9061de2`.
+
+Esto descarta un bug estructural en el formato JSON entre ambos lenguajes. **La causa raíz más probable identificada:** ni el lado Python ni el lado TypeScript fijaban una versión exacta del SDK x402:
+
+```toml
+# pyproject.toml (ANTES)
+"x402[evm]>=2.0.0"
+```
+```json
+// x402-test/buyer/package.json (ANTES)
+"@x402/fetch": "latest",
+"@x402/core": "latest",
+"@x402/evm": "latest"
+```
+
+`x402` es un protocolo/SDK en desarrollo activo — el propio `x402-test/README.md` ya documentaba (hallazgo #5, y ahora #6) que el formato de rutas y el comportamiento del facilitador cambiaron entre el momento en que se escribió ese README y hoy. Con rangos abiertos, **cada integrante que corre `pip install` / `npm install` en un momento distinto puede terminar con una combinación de versiones distinta** de los SDKs cliente/servidor, sin que nadie haya tocado el código de Vector52. Eso explica un patrón de "a mí me funciona, a otro no" sin ningún cambio de código entre ambos.
+
+**Corrección aplicada:** ambas dependencias quedaron fijadas a las versiones verificadas en las dos pruebas reales de arriba:
+- Backend (`pyproject.toml`): `x402[evm]==2.22.0`
+- Buyer TS (`x402-test/buyer/package.json`): `@x402/fetch`, `@x402/core`, `@x402/evm` → `2.25.0` (con `package-lock.json` regenerado)
+
+**Recomendación para cualquier otro cliente x402 del proyecto** (MCP server, frontend): fijar siempre versión exacta de los paquetes x402, nunca `latest` ni un rango abierto tipo `^`/`>=`, y si alguien reporta un fallo de pago que "no debería pasar", **lo primero a comparar es la versión instalada del SDK x402 en ambos lados**, no asumir un bug de protocolo/JSON sin antes descartar esto.
+
 ---
 
 ## 6. Manejo de errores — tabla de referencia para el cliente
