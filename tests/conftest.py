@@ -32,6 +32,12 @@ if not os.environ.get("V52_GRAPH_ENDPOINT"):
     )
 # No fallback for V52_GRAPH_API_KEY: it's a secret and must come from .env or
 # the environment. Graph-gateway tests skip themselves when it's absent.
+#
+# Keep unit/contract tests hermetic by default. A developer .env may enable the
+# real x402 facilitator, but importing the FastAPI app with that setting mounts
+# payment middleware that performs live /supported calls before route handlers.
+if os.environ.get("V52_RUN_LIVE_X402") != "1":
+    os.environ["V52_X402_ENABLED"] = "false"
 
 from app.config import invalidate_settings  # noqa: E402 — must follow env setup above
 from app.main import app  # noqa: E402

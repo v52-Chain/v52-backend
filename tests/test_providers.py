@@ -1,7 +1,7 @@
 """
-Tests for EthereumRpcProvider and TheGraphProvider using REAL live network calls.
+Tests for EthereumRpcProvider and TheGraphProvider.
 
-No mocks are used. These tests verify:
+Live network tests are opt-in with V52_RUN_LIVE_PROVIDERS=1. They verify:
   - Real JSON-RPC calls against Ethereum Mainnet (transaction, receipt, block, logs).
   - Real GraphQL queries against The Graph Decentralized Gateway (Uniswap V3 subgraph).
   - Real error handling (unmined tx, invalid RPC method, invalid GraphQL field).
@@ -29,10 +29,18 @@ REAL_GRAPH_ENDPOINT = os.environ.get("V52_GRAPH_ENDPOINT") or (
 # No hardcoded fallback: this is a secret and must never live in source. Tests
 # that need it are skipped automatically when it isn't configured.
 REAL_GRAPH_API_KEY = os.environ.get("V52_GRAPH_API_KEY", "")
+RUN_LIVE_PROVIDERS = os.environ.get("V52_RUN_LIVE_PROVIDERS") == "1"
+
+requires_live_providers = pytest.mark.skipif(
+    not RUN_LIVE_PROVIDERS,
+    reason="Set V52_RUN_LIVE_PROVIDERS=1 to run live RPC and Graph gateway tests",
+)
 
 requires_graph_api_key = pytest.mark.skipif(
-    not REAL_GRAPH_API_KEY,
-    reason="V52_GRAPH_API_KEY not configured; set it in .env to run live Graph gateway tests",
+    not (RUN_LIVE_PROVIDERS and REAL_GRAPH_API_KEY),
+    reason=(
+        "Set V52_RUN_LIVE_PROVIDERS=1 and V52_GRAPH_API_KEY to run live Graph gateway tests"
+    ),
 )
 
 # Known mined Uniswap V3 swap transaction on Ethereum Mainnet:
@@ -68,6 +76,7 @@ def test_rpc_provider_requires_url() -> None:
 
 
 @pytest.mark.asyncio
+@requires_live_providers
 async def test_rpc_get_transaction_success() -> None:
     """Fetches a real transaction from Ethereum Mainnet via JSON-RPC."""
     provider = EthereumRpcProvider(rpc_url=REAL_RPC_URL)
@@ -82,6 +91,7 @@ async def test_rpc_get_transaction_success() -> None:
 
 
 @pytest.mark.asyncio
+@requires_live_providers
 async def test_rpc_get_transaction_returns_none_for_unknown() -> None:
     """A real Ethereum node returns None for an unknown/unmined transaction."""
     provider = EthereumRpcProvider(rpc_url=REAL_RPC_URL)
@@ -90,6 +100,7 @@ async def test_rpc_get_transaction_returns_none_for_unknown() -> None:
 
 
 @pytest.mark.asyncio
+@requires_live_providers
 async def test_rpc_get_receipt_and_block() -> None:
     """Fetches real transaction receipt and block from Ethereum Mainnet."""
     provider = EthereumRpcProvider(rpc_url=REAL_RPC_URL)
@@ -107,6 +118,7 @@ async def test_rpc_get_receipt_and_block() -> None:
 
 
 @pytest.mark.asyncio
+@requires_live_providers
 async def test_rpc_acquire_full_l0_evidence() -> None:
     """Full L0 evidence acquisition (tx, receipt, block, logs) from real chain."""
     provider = EthereumRpcProvider(rpc_url=REAL_RPC_URL)
@@ -121,6 +133,7 @@ async def test_rpc_acquire_full_l0_evidence() -> None:
 
 
 @pytest.mark.asyncio
+@requires_live_providers
 async def test_rpc_error_response_raises_provider_error() -> None:
     """Calling an invalid method on a real Ethereum node raises ProviderError.
 

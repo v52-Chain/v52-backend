@@ -9,8 +9,8 @@ Most of these tests run WITHOUT live providers.  They verify that:
   - Valid requests are accepted (provider calls may return DEGRADED/FAILED without creds).
 
 One test (test_real_claim_audit_with_live_evidence) exercises the full
-pipeline against real Ethereum RPC and The Graph; it is skipped automatically
-when V52_GRAPH_API_KEY isn't configured.
+pipeline against real Ethereum RPC and The Graph; it is opt-in with
+V52_RUN_LIVE_PROVIDERS=1 and skipped automatically without V52_GRAPH_API_KEY.
 """
 
 from __future__ import annotations
@@ -129,8 +129,10 @@ def test_no_secrets_in_error_response(client: TestClient) -> None:
 
 
 @pytest.mark.skipif(
-    not os.environ.get("V52_GRAPH_API_KEY"),
-    reason="V52_GRAPH_API_KEY not configured; set it in .env to run live Graph gateway tests",
+    os.environ.get("V52_RUN_LIVE_PROVIDERS") != "1" or not os.environ.get("V52_GRAPH_API_KEY"),
+    reason=(
+        "Set V52_RUN_LIVE_PROVIDERS=1 and V52_GRAPH_API_KEY to run live Graph gateway tests"
+    ),
 )
 def test_real_claim_audit_with_live_evidence(client: TestClient) -> None:
     """Executes a real audit for a live Uniswap V3 transaction with real RPC and Graph."""
