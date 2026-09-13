@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import app
@@ -96,8 +98,6 @@ def test_agent_capabilities_fail_closed_when_x402_is_disabled(client) -> None:
 
 
 def test_x402_middleware_can_be_configured_without_contacting_facilitator() -> None:
-    from fastapi import FastAPI
-
     x402_app = FastAPI()
     settings = Settings(
         V52_X402_ENABLED=True,
@@ -111,3 +111,27 @@ def test_x402_middleware_can_be_configured_without_contacting_facilitator() -> N
         middleware.cls.__name__ == "PaymentMiddlewareASGI"
         for middleware in x402_app.user_middleware
     )
+
+
+def test_x402_facilitator_connection_failure_returns_retryable_503() -> None:
+    x402_app = FastAPI()
+
+    @x402_app.post("/v1/agent/investigations/wallet-flow")
+    async def protected_route() -> dict[str, str]:
+        return {"ok": "true"}
+
+    settings = Settings(
+        V52_X402_ENABLED=True,
+        V52_X402_FACILITATOR_URL="http://127.0.0.1:9",
+        V52_X402_FACILITATOR_API_KEY="test-only-relayer-token",
+        V52_X402_PAY_TO="0x" + "1" * 40,
+    )
+    configure_x402(x402_app, settings)
+
+    response = TestClient(x402_app, raise_server_exceptions=False).post(
+        "/v1/agent/investigations/wallet-flow",
+        json={"target_address": "0x" + "a" * 40},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "x402_facilitator_unavailable"

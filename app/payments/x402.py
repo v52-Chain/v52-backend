@@ -44,7 +44,9 @@ class FacilitatorFailoverMiddleware:
         try:
             await self.app(scope, receive, send)
         except (httpx.HTTPError, ValueError) as exc:
-            if "facilitator" not in str(exc).lower():
+            path = scope.get("path", "")
+            is_agent_payment_route = isinstance(path, str) and path.startswith("/v1/agent/")
+            if not is_agent_payment_route and "facilitator" not in str(exc).lower():
                 raise
             logger.error("x402 facilitator is unreachable: %s", exc)
             response = JSONResponse(
@@ -75,12 +77,33 @@ class BearerAuthProvider:
         )
 
 
+class NoProxyHTTPFacilitatorClient(HTTPFacilitatorClient):
+    """HTTP facilitator client that ignores ambient proxy variables.
+
+    x402 payments are server-to-server calls to an explicit facilitator URL.
+    Letting `httpx` inherit HTTP_PROXY/HTTPS_PROXY from a developer shell can
+    make local tests fail even while `curl` reaches the facilitator directly.
+    """
+
+    def _get_sync_client(self) -> httpx.Client:
+        return httpx.Client(timeout=self._timeout, follow_redirects=True, trust_env=False)
+
+    def _get_async_client(self) -> httpx.AsyncClient:
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(
+                timeout=self._timeout,
+                follow_redirects=True,
+                trust_env=False,
+            )
+        return self._http_client
+
+
 def configure_x402(app: FastAPI, settings: Settings) -> None:
     """Protect agent routes only when every settlement setting is present."""
     if not settings.x402_configured:
         return
 
-    facilitator = HTTPFacilitatorClient(
+    facilitator = NoProxyHTTPFacilitatorClient(
         FacilitatorConfig(
             url=settings.v52_x402_facilitator_url,
             auth_provider=BearerAuthProvider(settings.v52_x402_facilitator_api_key),
