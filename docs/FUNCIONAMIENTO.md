@@ -422,6 +422,15 @@ def redact(text: str) -> str:
   - `block.number` y `block.hash` para comparar la frescura del subgrafo contra el bloque real obtenido en L0.
   - `deployment` (identificador IPFS del despliegue).
   - `hasIndexingErrors`: Si es `true`, agrega automáticamente una advertencia y marca la evidencia como degradada.
+- **Multi-cadena (DeFi Subgraph Intel):** `TheGraphProvider` en sí no cambió;
+  `app/providers/factory.py:get_graph_provider_for_chain` generaliza su
+  *instanciación* a HSK/Avalanche/Ethereum (cada una con su propio
+  endpoint/API key/schema opcionales), consumido por
+  `app/api/defi_core.py` para escanear pools/pairs y swaps más allá del
+  pipeline de auditoría de una transacción puntual. Ver
+  [`SUBGRAPHS.md`](./SUBGRAPHS.md) para la integración completa y
+  [`API.md` §3.17](./API.md#317-defi-subgraph-intel--hsk--avalanche--ethereum-mainnet)
+  para el contrato HTTP.
 
 ---
 
@@ -784,7 +793,7 @@ Vector52 define cuatro niveles de acceso para balancear usabilidad, sostenibilid
 |---|---|---|---|
 | **Nivel 0: Bien Público / Abierto** | Cualquier cliente (Humanos y Agentes) | `GET /healthz`, `GET /v1/providers/status`, `GET /v1/agent/capabilities`, `GET /v1/audits/{job_id}`, `POST /v1/verify` | Totalmente público. Cero tarifas. La verificación de integridad `.v52.zip` se mantiene abierta para auditoría universal. |
 | **Nivel 1: Autenticación Web Interactiva** | Usuarios Humanos (PWA) | `POST /v1/auth/wallet/challenge`, `POST /v1/auth/wallet/verify`, `GET /v1/auth/wallet/me`, `POST /v1/web/investigations/wallet-flow`, `POST /v1/audits` | Firma SIWE sin gas. Sesión Bearer de 8 horas. Cuotas interactivas de investigación controladas por rate-limiting. |
-| **Nivel 2: Micropago M2M Agentes** | IAs, MCPs, Bots Autónomos | `POST /v1/agent/investigations/wallet-flow` (1000 atomic USDC) | Protocolo x402 v2 con settlement on-chain en Avalanche Fuji. Cobro por consulta para amortizar consumo de API externas. |
+| **Nivel 2: Micropago M2M Agentes** | IAs, MCPs, Bots Autónomos | `POST /v1/agent/investigations/wallet-flow` (1000 atomic USDC); `POST /v1/agent/intel/defi/pools` (400), `/pool-activity` (900), `/scan` (2500) — ver [`SUBGRAPHS.md`](./SUBGRAPHS.md) | Protocolo x402 v2 con settlement on-chain en Avalanche Fuji. Cobro por consulta para amortizar consumo de API externas; tarifa escalonada por costo/valor de la consulta en el caso de DeFi Intel. |
 | **Nivel 3: Operaciones On-Chain / Premium** | Humanos y Agentes | `POST /v1/paid/claim-audit` (5000 atomic USDC), `POST /v1/cases/{case_id}/anchor` (2000 atomic USDC), `GET /v1/cases/{case_id}/package` (500 atomic USDC) | Requiere pago x402 tanto para agentes como para humanos (modal Web3 en PWA) para cubrir patrocinio de gas en HSK y análisis con IA L5. |
 
 ---

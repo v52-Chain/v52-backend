@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends
 from app.config import Settings, get_settings
 from app.models.api import ApiEnvelope, ApiError, EnvelopeStatus, envelope
 from app.providers.base import ProviderError
-from app.providers.factory import configured_chains, get_rpc_provider_for_chain
+from app.providers.factory import (
+    configured_chains,
+    configured_graph_chains,
+    get_rpc_provider_for_chain,
+)
 
 router = APIRouter(prefix="/v1/providers", tags=["providers"])
 
@@ -18,11 +22,26 @@ router = APIRouter(prefix="/v1/providers", tags=["providers"])
     summary="Return redacted provider health and chain checks",
 )
 async def provider_status(settings: Settings = Depends(get_settings)) -> ApiEnvelope:
-    """Return provider status without exposing URLs, keys or tokens."""
+    """Return provider status without exposing URLs, keys or tokens.
+
+    `data.the_graph` keeps its original `status`/`network` fields (Ethereum,
+    for backward compatibility) and additively gains `chains`: a per-chain
+    (ethereum/avalanche/hsk) configuration breakdown for the DeFi Subgraph
+    Intel surface under /v1/intel/defi/* and /v1/agent/intel/defi/*.
+    """
+    graph_chains = configured_graph_chains(settings)
     data: dict[str, object] = {
         "the_graph": {
             "status": "CONFIGURED" if settings.graph_configured else "UNCONFIGURED",
             "network": "ethereum-mainnet",
+            "chains": {
+                key: {
+                    "status": "CONFIGURED" if chain.configured else "UNCONFIGURED",
+                    "network": chain.network,
+                    "schema": chain.schema,
+                }
+                for key, chain in graph_chains.items()
+            },
         },
         "rpc": {},
         "x402": {

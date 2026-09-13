@@ -90,28 +90,47 @@ def configure_x402(app: FastAPI, settings: Settings) -> None:
     network = cast(Network, settings.v52_x402_network)
     server.register(network, ExactEvmServerScheme())
 
+    def _option(amount: str) -> PaymentOption:
+        return PaymentOption(
+            scheme="exact",
+            pay_to=settings.v52_x402_pay_to,
+            price={
+                "amount": amount,
+                "asset": settings.v52_x402_asset,
+                "extra": {
+                    "name": "USD Coin",
+                    "version": "2",
+                    "areFeesSponsored": True,
+                },
+            },
+            network=network,
+            max_timeout_seconds=300,
+        )
+
     routes: dict[str, RouteConfig] = {
         "POST /v1/agent/investigations/wallet-flow": RouteConfig(
-            accepts=[
-                PaymentOption(
-                    scheme="exact",
-                    pay_to=settings.v52_x402_pay_to,
-                    price={
-                        "amount": settings.v52_x402_wallet_flow_price,
-                        "asset": settings.v52_x402_asset,
-                        "extra": {
-                            "name": "USD Coin",
-                            "version": "2",
-                            "areFeesSponsored": True,
-                        },
-                    },
-                    network=network,
-                    max_timeout_seconds=300,
-                )
-            ],
+            accepts=[_option(settings.v52_x402_wallet_flow_price)],
             mime_type="application/json",
             description="Vector52 wallet-flow forensic acquisition",
-        )
+        ),
+        # DeFi Subgraph Intel — priced by query cost/value (docs/SUBGRAPHS.md §4):
+        # a single chain's top pools is cheapest, a per-pool swap drill-down
+        # costs more, and a multi-chain vital-points scan is the most expensive.
+        "POST /v1/agent/intel/defi/pools": RouteConfig(
+            accepts=[_option(settings.v52_x402_defi_pools_price)],
+            mime_type="application/json",
+            description="Vector52 DeFi Subgraph Intel — top pools/pairs by liquidity",
+        ),
+        "POST /v1/agent/intel/defi/pool-activity": RouteConfig(
+            accepts=[_option(settings.v52_x402_defi_pool_activity_price)],
+            mime_type="application/json",
+            description="Vector52 DeFi Subgraph Intel — per-pool swap activity",
+        ),
+        "POST /v1/agent/intel/defi/scan": RouteConfig(
+            accepts=[_option(settings.v52_x402_defi_scan_price)],
+            mime_type="application/json",
+            description="Vector52 DeFi Subgraph Intel — multi-chain vital-points scan",
+        ),
     }
     app.add_middleware(PaymentMiddlewareASGI, routes=routes, server=server)
     app.add_middleware(FacilitatorFailoverMiddleware)

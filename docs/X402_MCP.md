@@ -10,6 +10,7 @@
 |---|---|---|
 | Nivel 0 — Público | `GET /v1/agent/capabilities` | ✅ Implementado y verificado |
 | Nivel 2 — Micropago M2M | `POST /v1/agent/investigations/wallet-flow` | ✅ Implementado y verificado end-to-end (ver §5) |
+| Nivel 2 — Micropago M2M | `POST /v1/agent/intel/defi/pools`, `POST /v1/agent/intel/defi/pool-activity`, `POST /v1/agent/intel/defi/scan` | ✅ Implementado (DeFi Subgraph Intel — ver [`SUBGRAPHS.md`](./SUBGRAPHS.md)). Mismo middleware, mismo protocolo; solo agrega entradas al diccionario `routes` de `configure_x402` (exactamente el patrón de §8). |
 | Nivel 3 — On-chain / Premium | `POST /v1/paid/claim-audit`, `POST /v1/cases/{case_id}/anchor`, `GET /v1/cases/{case_id}/package` (protegido con x402) | ⏳ **Documentado en la matriz de `API.md`/`FUNCIONAMIENTO.md`, pero todavía no implementado en código.** `claim-audit` y `package` existen hoy sin protección x402; `anchor` no existe como endpoint. §8 explica cómo extender el patrón cuando se construyan. |
 
 Esta guía cubre en profundidad el Nivel 2 (el único canal x402 real hoy) y deja preparado el patrón de extensión para el Nivel 3.

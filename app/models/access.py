@@ -85,6 +85,17 @@ class AgentWalletFlowResponse(BaseModel):
     result: WalletFlowResponse
 
 
+class AgentDefiIntelCapabilities(BaseModel):
+    """Additive: prices for the DeFi Subgraph Intel endpoints (HSK/Avalanche/Ethereum)."""
+
+    pools_endpoint: str = "/v1/agent/intel/defi/pools"
+    pools_amount_atomic: str
+    pool_activity_endpoint: str = "/v1/agent/intel/defi/pool-activity"
+    pool_activity_amount_atomic: str
+    scan_endpoint: str = "/v1/agent/intel/defi/scan"
+    scan_amount_atomic: str
+
+
 class AgentCapabilitiesResponse(BaseModel):
     channel: Literal["AGENT_X402"] = "AGENT_X402"
     ready: bool
@@ -94,4 +105,5 @@ class AgentCapabilitiesResponse(BaseModel):
     asset: str
     amount_atomic: str
     automatic_payment_owner: Literal["MCP_CLIENT"] = "MCP_CLIENT"
+    defi_intel: AgentDefiIntelCapabilities | None = None
     warnings: list[str] = Field(default_factory=list)

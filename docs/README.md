@@ -57,3 +57,16 @@ HSK Testnet. El contrato en sí, su despliegue, tests de Foundry y modelo de
 seguridad viven en el repositorio hermano
 [`v52-onchain`](../../v52-onchain/README.md).
 
+### 5. [DeFi Subgraph Intel — HSK / Avalanche / Ethereum](./SUBGRAPHS.md)
+Integración multi-cadena de The Graph para escanear pools/pairs y actividad
+DeFi ("puntos vitales") más allá del subgrafo fijo de Uniswap V3 que ya
+existía:
+- Cómo se eligió qué indexar por cadena (Ethereum: subgrafo existente;
+  Avalanche: config-driven contra subgrafos verificados por el operador;
+  HSK: subgrafo nuevo — `subgraph/hsk-core/` — porque HSK no publica uno).
+- Contrato completo de `GET /v1/intel/defi/status` (gratuito) y los tres
+  endpoints pagados con x402 bajo `/v1/agent/intel/defi/*`, con tarifas
+  escalonadas por costo/valor de la consulta.
+- Por qué `/v1/providers/status` y `/v1/agent/capabilities` solo ganaron
+  campos nuevos — su forma original no cambió.
+
