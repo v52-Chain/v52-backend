@@ -70,16 +70,17 @@ def _get_client(settings: Settings, *, require_signer: bool) -> HskRegistryClien
         raise HTTPException(
             status_code=503,
             detail=(
-                "HSK anchoring is not configured. Set HSK_RPC_URL, "
-                "HSK_EVIDENCE_REGISTRY_ADDRESS and HSK_ANCHOR_PRIVATE_KEY."
+                "HSK anchoring is not configured. Set HSK_NETWORK=testnet|mainnet "
+                "(or HSK_RPC_URL and HSK_EVIDENCE_REGISTRY_ADDRESS explicitly) "
+                "and HSK_ANCHOR_PRIVATE_KEY."
             ),
         )
     if not require_signer and not settings.hsk_registry_configured:
         raise HTTPException(
             status_code=503,
             detail=(
-                "HSK registry lookup is not configured. Set HSK_RPC_URL "
-                "and HSK_EVIDENCE_REGISTRY_ADDRESS."
+                "HSK registry lookup is not configured. Set HSK_NETWORK=testnet|mainnet "
+                "(or HSK_RPC_URL and HSK_EVIDENCE_REGISTRY_ADDRESS explicitly)."
             ),
         )
     return HskRegistryClient(

@@ -153,6 +153,13 @@ HSK_RPC_URL=https://tu-proveedor-hsk/rpc
 - `RPC_TIMEOUT_MS` (default: 12000): Timeout en milisegundos para llamadas RPC
 - `RPC_MAX_RETRIES` (default: 2): Reintentos en caso de fallo transitorio
 - `ALCHEMY_AVAX_CHAIN_ID` (default: 43114): Configura a 43113 para usar Fuji Testnet en lugar de Mainnet
+- `HSK_NETWORK` (`testnet` | `mainnet`, opcional): resuelve automáticamente
+  `HSK_RPC_URL`, `HSK_CHAIN_ID`, `HSK_EVIDENCE_REGISTRY_ADDRESS` y
+  `HSK_EXPLORER_URL` desde los deployments reales publicados en
+  `v52-onchain/deployments/hsk-{testnet,mainnet}.json` (ver §3.16). Cualquiera
+  de esas cuatro variables, si se define explícitamente, sigue teniendo
+  prioridad sobre el valor por red. Sin `HSK_NETWORK`, el comportamiento es el
+  histórico (nada configurado hasta fijar cada variable a mano).
 
 The Graph endpoint es requerido en producción:
 ```
@@ -1175,6 +1182,12 @@ versión de esquema y el `case_id` no sensible. Ver
 Respuesta real capturada contra HSK Testnet el 13 de septiembre de 2026
 (primer anclaje de un caso nunca antes anclado — sin reintentos).
 
+`chain_id`, `explorer_tx_url`/`explorer_address_url` y la dirección del
+registro dependen de `HSK_NETWORK` (`testnet` → chain 133, `mainnet` →
+chain 177; ver §2 y `v52-onchain/README.md` para ambos deployments reales).
+El backend anota a qué red ancló cada caso — no hay ambigüedad al leer un
+anchor anterior aunque `HSK_NETWORK` cambie después.
+
 `manifest_root` es siempre `sha256(manifest.json)` **exactamente como fue
 empaquetado** dentro del `.v52.zip` — el mismo hash que verificaría
 `POST /v1/verify`. Reintentar este endpoint con un paquete sin cambios es
@@ -1197,7 +1210,7 @@ nueva transacción y `already_anchored` es `true`.
   `HSK_EVIDENCE_REGISTRY_ADDRESS` o `HSK_ANCHOR_PRIVATE_KEY` no están
   configuradas.
   ```json
-  {"detail": "HSK anchoring is not configured. Set HSK_RPC_URL, HSK_EVIDENCE_REGISTRY_ADDRESS and HSK_ANCHOR_PRIVATE_KEY."}
+  {"detail": "HSK anchoring is not configured. Set HSK_NETWORK=testnet|mainnet (or HSK_RPC_URL and HSK_EVIDENCE_REGISTRY_ADDRESS explicitly) and HSK_ANCHOR_PRIVATE_KEY."}
   ```
 
 ##### Ejemplo con cURL:
@@ -1245,8 +1258,9 @@ tiene ese bloque indexado).
   ```json
   {"detail": "No anchor found for manifest_root '0x...'."}
   ```
-- **HTTP 503 Service Unavailable:** `HSK_RPC_URL` o
-  `HSK_EVIDENCE_REGISTRY_ADDRESS` no configuradas.
+- **HTTP 503 Service Unavailable:** `HSK_NETWORK` no está fijado y
+  `HSK_RPC_URL`/`HSK_EVIDENCE_REGISTRY_ADDRESS` tampoco se configuraron
+  explícitamente.
 
 ##### Ejemplo con cURL:
 ```bash

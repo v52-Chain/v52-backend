@@ -24,6 +24,34 @@ _ALCHEMY_ETH_MAINNET_URL = "https://eth-mainnet.g.alchemy.com/v2/{api_key}"
 _ALCHEMY_AVAX_MAINNET_URL = "https://avax-mainnet.g.alchemy.com/v2/{api_key}"
 _ALCHEMY_AVAX_FUJI_URL = "https://avax-fuji.g.alchemy.com/v2/{api_key}"
 
+# V52EvidenceRegistry deployments, one per HSK network. Mirrors
+# v52-onchain/deployments/hsk-{testnet,mainnet}.json — must be updated by hand
+# if those deployments change (no cross-repo artifact pipeline yet, same
+# caveat as the vendored ABI in app/onchain/abi/V52EvidenceRegistry.json).
+# HSK_NETWORK selects which row is used for every field below unless the
+# matching HSK_* env var is set explicitly, in which case that explicit value
+# always wins over the network default.
+_HSK_NETWORK_DEFAULTS: dict[str, dict[str, str | int]] = {
+    "testnet": {
+        "chain_id": 133,
+        "rpc_url": "https://testnet.hsk.xyz",
+        "explorer_url": "https://testnet-explorer.hsk.xyz",
+        "evidence_registry_address": "0x3422820Ef9FBC8e0206E4CBcB6369dBd14BE18c4",
+    },
+    "mainnet": {
+        "chain_id": 177,
+        "rpc_url": "https://mainnet.hsk.xyz",
+        "explorer_url": "https://hsk.blockscout.com",
+        "evidence_registry_address": "0xf7565Ec1e00206955286B8536c779A7221E62A9c",
+    },
+}
+
+# Legacy hardcoded defaults, kept byte-for-byte identical to pre-HSK_NETWORK
+# behavior for anyone who never sets HSK_NETWORK: chain_id 177, testnet
+# explorer, empty RPC/address (i.e. "not configured" until set explicitly).
+_LEGACY_HSK_CHAIN_ID = 177
+_LEGACY_HSK_EXPLORER_URL = "https://testnet-explorer.hsk.xyz"
+
 
 class Settings(BaseSettings):
     """Runtime settings for the Vector52 backend."""
@@ -63,6 +91,17 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("ALCHEMY_AVAX_RPC_URL", "V52_ALCHEMY_AVAX_RPC_URL"),
     )
+    # Which HSK deployment to anchor against. Every HSK_* field below is an
+    # explicit override; when left unset (and HSK_NETWORK is also unset),
+    # existing single-network deployments keep behaving exactly as before
+    # (empty RPC/address, chain_id 177, testnet explorer). Setting
+    # HSK_NETWORK to "testnet" or "mainnet" is what activates automatic
+    # resolution of RPC URL / chain ID / registry address / explorer from
+    # _HSK_NETWORK_DEFAULTS for any field left unset.
+    v52_hsk_network: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("HSK_NETWORK", "V52_HSK_NETWORK"),
+    )
     v52_hsk_rpc_url: str = Field(
         default="",
         validation_alias=AliasChoices("HSK_RPC_URL", "V52_HSK_RPC_URL"),
@@ -89,9 +128,8 @@ class Settings(BaseSettings):
         ge=1,
         validation_alias=AliasChoices("ALCHEMY_AVAX_CHAIN_ID", "V52_ALCHEMY_AVAX_CHAIN_ID"),
     )
-    hsk_chain_id: int = Field(
-        default=177,
-        ge=1,
+    v52_hsk_chain_id_override: int | None = Field(
+        default=None,
         validation_alias=AliasChoices("HSK_CHAIN_ID", "V52_HSK_CHAIN_ID"),
     )
 
@@ -100,18 +138,23 @@ class Settings(BaseSettings):
     # the manifest itself, wallets under investigation or claims. See
     # v52-onchain/contracts/hsk/V52EvidenceRegistry.sol and
     # v52-onchain/README.md for the full contract.
-    v52_hsk_evidence_registry_address: str = Field(
+    v52_hsk_evidence_registry_address_override: str = Field(
         default="",
         validation_alias=AliasChoices(
             "HSK_EVIDENCE_REGISTRY_ADDRESS", "V52_HSK_EVIDENCE_REGISTRY_ADDRESS"
         ),
     )
+    # Signer wallet: always network-specific, never has a network default —
+    # mainnet and testnet keys must never be interchangeable, and the mainnet
+    # V52EvidenceRegistry owner/issuer is the x402 agent key by historical
+    # accident (see v52-onchain/README.md HSK Mainnet security note); rotate
+    # to a dedicated key before relying on this for real anchoring.
     v52_hsk_anchor_private_key: str = Field(
         default="",
         validation_alias=AliasChoices("HSK_ANCHOR_PRIVATE_KEY", "V52_HSK_ANCHOR_PRIVATE_KEY"),
     )
-    v52_hsk_explorer_url: str = Field(
-        default="https://testnet-explorer.hsk.xyz",
+    v52_hsk_explorer_url_override: str = Field(
+        default="",
         validation_alias=AliasChoices("HSK_EXPLORER_URL", "V52_HSK_EXPLORER_URL"),
     )
     v52_hsk_anchor_gas_limit: int = Field(
@@ -162,6 +205,17 @@ class Settings(BaseSettings):
         if value not in allowed:
             raise ValueError(f"Graph schema must be one of {allowed}, got '{value}'.")
         return value
+
+    @field_validator("v52_hsk_network", mode="before")
+    @classmethod
+    def validate_hsk_network(cls, value: str | None) -> str | None:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        allowed = set(_HSK_NETWORK_DEFAULTS)
+        normalized = value.strip().lower()
+        if normalized not in allowed:
+            raise ValueError(f"HSK_NETWORK must be one of {sorted(allowed)}, got '{value}'.")
+        return normalized
 
     # Evidence Vault
     v52_data_dir: str = Field(default="./evidence_vault", alias="V52_DATA_DIR")
@@ -271,8 +325,47 @@ class Settings(BaseSettings):
         return bool(self.alchemy_avax_rpc_url)
 
     @property
+    def _hsk_network_defaults(self) -> dict[str, str | int] | None:
+        """Row of _HSK_NETWORK_DEFAULTS for HSK_NETWORK, or None if unset."""
+        if self.v52_hsk_network is None:
+            return None
+        return _HSK_NETWORK_DEFAULTS[self.v52_hsk_network]
+
+    @property
+    def hsk_network(self) -> str:
+        return self.v52_hsk_network or "(not set)"
+
+    @property
     def hsk_rpc_url(self) -> str:
-        return self.v52_hsk_rpc_url
+        """HSK JSON-RPC endpoint: explicit HSK_RPC_URL override, else HSK_NETWORK's default."""
+        if self.v52_hsk_rpc_url:
+            return self.v52_hsk_rpc_url
+        defaults = self._hsk_network_defaults
+        return str(defaults["rpc_url"]) if defaults else ""
+
+    @property
+    def hsk_chain_id(self) -> int:
+        """HSK chain ID: explicit HSK_CHAIN_ID override, else HSK_NETWORK's default."""
+        if self.v52_hsk_chain_id_override is not None:
+            return self.v52_hsk_chain_id_override
+        defaults = self._hsk_network_defaults
+        return int(defaults["chain_id"]) if defaults else _LEGACY_HSK_CHAIN_ID
+
+    @property
+    def v52_hsk_evidence_registry_address(self) -> str:
+        """V52EvidenceRegistry address: explicit override, else HSK_NETWORK's deployment."""
+        if self.v52_hsk_evidence_registry_address_override:
+            return self.v52_hsk_evidence_registry_address_override
+        defaults = self._hsk_network_defaults
+        return str(defaults["evidence_registry_address"]) if defaults else ""
+
+    @property
+    def v52_hsk_explorer_url(self) -> str:
+        """Block explorer base URL: explicit override, else HSK_NETWORK's default."""
+        if self.v52_hsk_explorer_url_override:
+            return self.v52_hsk_explorer_url_override
+        defaults = self._hsk_network_defaults
+        return str(defaults["explorer_url"]) if defaults else _LEGACY_HSK_EXPLORER_URL
 
     @property
     def hsk_rpc_configured(self) -> bool:
@@ -369,6 +462,7 @@ class Settings(BaseSettings):
             "hsk_rpc_configured": self.hsk_rpc_configured,
             "hsk_registry_configured": self.hsk_registry_configured,
             "hsk_anchor_configured": self.hsk_anchor_configured,
+            "hsk_network": self.hsk_network,
             "hsk_evidence_registry_address": self.v52_hsk_evidence_registry_address or "(not set)",
             "graph_configured": self.graph_configured,
             "graph_configured_ethereum": self.graph_configured_ethereum,
