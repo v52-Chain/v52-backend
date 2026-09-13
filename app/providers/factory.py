@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from app.config import Settings
 from app.providers.rpc import AlchemyRpcProvider, HskRpcProvider, JsonRpcProvider
+from app.providers.the_graph import TheGraphProvider
 
 
 @dataclass(frozen=True)
@@ -115,3 +116,68 @@ def _avalanche_network_name(chain_id: int) -> str:
     if chain_id == 43113:
         return "avalanche-fuji"
     return "avalanche-mainnet"
+
+
+@dataclass(frozen=True)
+class GraphChainConfig:
+    """Per-chain subgraph configuration used by the DeFi Subgraph Intel surface."""
+
+    key: str
+    network: str
+    endpoint: str
+    api_key: str
+    schema: str
+    configured: bool
+
+
+def configured_graph_chains(settings: Settings) -> dict[str, GraphChainConfig]:
+    """Return the per-chain subgraph config, keyed by canonical chain key.
+
+    Each chain is independently optional. An unconfigured chain still gets a
+    GraphChainConfig (with configured=False) so callers can report status
+    without special-casing missing entries.
+    """
+    return {
+        "ethereum": GraphChainConfig(
+            key="ethereum",
+            network="ethereum-mainnet",
+            endpoint=settings.graph_endpoint_ethereum,
+            api_key=settings.graph_api_key_ethereum,
+            schema=settings.v52_graph_schema_ethereum,
+            configured=settings.graph_configured_ethereum,
+        ),
+        "avalanche": GraphChainConfig(
+            key="avalanche",
+            network=_avalanche_network_name(settings.alchemy_avax_chain_id),
+            endpoint=settings.v52_graph_endpoint_avalanche,
+            api_key=settings.v52_graph_api_key_avalanche,
+            schema=settings.v52_graph_schema_avalanche,
+            configured=settings.graph_configured_avalanche,
+        ),
+        "hsk": GraphChainConfig(
+            key="hsk",
+            network="hsk",
+            endpoint=settings.v52_graph_endpoint_hsk,
+            api_key=settings.v52_graph_api_key_hsk,
+            schema=settings.v52_graph_schema_hsk,
+            configured=settings.graph_configured_hsk,
+        ),
+    }
+
+
+def get_graph_provider_for_chain(
+    settings: Settings,
+    chain: str | int,
+) -> TheGraphProvider | None:
+    """Build the configured TheGraphProvider for a chain, or None if unavailable/unknown."""
+    chain_config = normalize_chain(chain, settings)
+    if chain_config is None:
+        return None
+    graph_config = configured_graph_chains(settings).get(chain_config.key)
+    if graph_config is None or not graph_config.configured:
+        return None
+    return TheGraphProvider(
+        graph_config.endpoint,
+        api_key=graph_config.api_key,
+        timeout_seconds=settings.rpc_timeout_seconds,
+    )

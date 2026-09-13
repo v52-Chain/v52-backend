@@ -35,6 +35,7 @@ from app.api import (
     claim_audit,
     health,
     integrations,
+    intel,
     providers,
     rpc,
     verify,
@@ -133,6 +134,7 @@ def create_app() -> FastAPI:
     app.include_router(access.router)
     app.include_router(agent.router)
     app.include_router(integrations.router)
+    app.include_router(intel.router)
 
     # ── x402 Payment channel ──────────────────────────────────────────────────
     configure_x402(app, settings)

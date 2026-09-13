@@ -1,0 +1,16 @@
+{
+  "name": "hsk-core-subgraph",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Starter Uniswap-V2-style subgraph scaffold for HashKey Chain (hashkeychain). Not deployed by default — see README.md.",
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "auth": "graph auth --product hosted-service",
+    "deploy": "graph deploy --product hosted-service"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-cli": "^0.97.1",
+    "@graphprotocol/graph-ts": "^0.38.1"
+  }
+}

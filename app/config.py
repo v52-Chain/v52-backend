@@ -126,9 +126,42 @@ class Settings(BaseSettings):
         ),
     )
 
-    # The Graph
+    # The Graph — legacy single-chain fields. Kept as the Ethereum fallback so
+    # existing deployments (V52_GRAPH_ENDPOINT/V52_GRAPH_API_KEY only) keep
+    # working unchanged.
     v52_graph_endpoint: str = Field(default="", alias="V52_GRAPH_ENDPOINT")
     v52_graph_api_key: str = Field(default="", alias="V52_GRAPH_API_KEY")
+
+    # The Graph — per-chain configuration for the multi-chain DeFi Subgraph
+    # Intel feature (docs/SUBGRAPHS.md). Each chain is independently optional:
+    # an unconfigured chain reports UNCONFIGURED honestly rather than
+    # inventing data. `schema` selects which GraphQL shape the query builder
+    # in app/api/defi_core.py speaks — "uniswap_v3" (pools/feeTier/liquidity)
+    # or "uniswap_v2" (pairs/reserve0/reserve1), matching the family most
+    # subgraphs on that chain fork.
+    v52_graph_endpoint_ethereum: str = Field(default="", alias="V52_GRAPH_ENDPOINT_ETHEREUM")
+    v52_graph_api_key_ethereum: str = Field(default="", alias="V52_GRAPH_API_KEY_ETHEREUM")
+    v52_graph_schema_ethereum: str = Field(default="uniswap_v3", alias="V52_GRAPH_SCHEMA_ETHEREUM")
+
+    v52_graph_endpoint_avalanche: str = Field(default="", alias="V52_GRAPH_ENDPOINT_AVALANCHE")
+    v52_graph_api_key_avalanche: str = Field(default="", alias="V52_GRAPH_API_KEY_AVALANCHE")
+    v52_graph_schema_avalanche: str = Field(
+        default="uniswap_v2", alias="V52_GRAPH_SCHEMA_AVALANCHE"
+    )
+
+    v52_graph_endpoint_hsk: str = Field(default="", alias="V52_GRAPH_ENDPOINT_HSK")
+    v52_graph_api_key_hsk: str = Field(default="", alias="V52_GRAPH_API_KEY_HSK")
+    v52_graph_schema_hsk: str = Field(default="uniswap_v2", alias="V52_GRAPH_SCHEMA_HSK")
+
+    @field_validator(
+        "v52_graph_schema_ethereum", "v52_graph_schema_avalanche", "v52_graph_schema_hsk"
+    )
+    @classmethod
+    def validate_graph_schema(cls, value: str) -> str:
+        allowed = {"uniswap_v3", "uniswap_v2"}
+        if value not in allowed:
+            raise ValueError(f"Graph schema must be one of {allowed}, got '{value}'.")
+        return value
 
     # Evidence Vault
     v52_data_dir: str = Field(default="./evidence_vault", alias="V52_DATA_DIR")
@@ -161,6 +194,15 @@ class Settings(BaseSettings):
         alias="V52_X402_ASSET",
     )
     v52_x402_wallet_flow_price: str = Field(default="1000", alias="V52_X402_WALLET_FLOW_PRICE")
+    # DeFi Subgraph Intel pricing tiers (docs/SUBGRAPHS.md §4). Priced by
+    # query cost/value: a single chain's top pools is the cheapest read; a
+    # per-pool swap drill-down costs more; a full multi-chain vital-points
+    # scan is the most expensive because it fans out to every configured chain.
+    v52_x402_defi_pools_price: str = Field(default="400", alias="V52_X402_DEFI_POOLS_PRICE")
+    v52_x402_defi_pool_activity_price: str = Field(
+        default="900", alias="V52_X402_DEFI_POOL_ACTIVITY_PRICE"
+    )
+    v52_x402_defi_scan_price: str = Field(default="2500", alias="V52_X402_DEFI_SCAN_PRICE")
 
     # MCP Agent Access integration (optional). Empty by default: v52-mcp is a
     # separate repository/process not yet connected to this backend. Until a
@@ -260,6 +302,27 @@ class Settings(BaseSettings):
         return bool(self.v52_graph_endpoint)
 
     @property
+    def graph_endpoint_ethereum(self) -> str:
+        """Ethereum subgraph endpoint: explicit override, else the legacy field."""
+        return self.v52_graph_endpoint_ethereum or self.v52_graph_endpoint
+
+    @property
+    def graph_api_key_ethereum(self) -> str:
+        return self.v52_graph_api_key_ethereum or self.v52_graph_api_key
+
+    @property
+    def graph_configured_ethereum(self) -> bool:
+        return bool(self.graph_endpoint_ethereum)
+
+    @property
+    def graph_configured_avalanche(self) -> bool:
+        return bool(self.v52_graph_endpoint_avalanche)
+
+    @property
+    def graph_configured_hsk(self) -> bool:
+        return bool(self.v52_graph_endpoint_hsk)
+
+    @property
     def x402_configured(self) -> bool:
         """x402 payment channel is fully configured when all required fields are set and enabled."""
         return self.v52_x402_enabled and all(
@@ -308,6 +371,9 @@ class Settings(BaseSettings):
             "hsk_anchor_configured": self.hsk_anchor_configured,
             "hsk_evidence_registry_address": self.v52_hsk_evidence_registry_address or "(not set)",
             "graph_configured": self.graph_configured,
+            "graph_configured_ethereum": self.graph_configured_ethereum,
+            "graph_configured_avalanche": self.graph_configured_avalanche,
+            "graph_configured_hsk": self.graph_configured_hsk,
             "x402_configured": self.x402_configured,
             "rpc_timeout_ms": self.rpc_timeout_ms,
             "rpc_max_retries": self.rpc_max_retries,
@@ -331,6 +397,10 @@ class Settings(BaseSettings):
                 _REDACTED if self.v52_hsk_anchor_private_key else "(not set)"
             ),
             "v52_graph_api_key": _REDACTED if self.v52_graph_api_key else "(not set)",
+            "v52_graph_endpoint_avalanche": (
+                _REDACTED if self.v52_graph_endpoint_avalanche else "(not set)"
+            ),
+            "v52_graph_endpoint_hsk": _REDACTED if self.v52_graph_endpoint_hsk else "(not set)",
             "v52_mongodb_uri": _REDACTED if self.v52_mongodb_uri else "(not set)",
             "v52_ai_api_key": _REDACTED if self.v52_ai_api_key else "(not set)",
             "v52_x402_facilitator_api_key": (

@@ -44,6 +44,11 @@
    - 3.16 [Anclaje HSK (`V52EvidenceRegistry`)](#316-anclaje-hsk-v52evidenceregistry)
      - 3.16.1 [`POST /v1/cases/{case_id}/anchor` — Anclar el manifest de un caso](#3161-post-v1casescase_idanchor--anclar-el-manifest-de-un-caso)
      - 3.16.2 [`GET /v1/anchors/{manifest_root}` — Consultar procedencia de un anchor](#3162-get-v1anchorsmanifest_root--consultar-procedencia-de-un-anchor)
+   - 3.17 [DeFi Subgraph Intel — HSK / Avalanche / Ethereum Mainnet](#317-defi-subgraph-intel--hsk--avalanche--ethereum-mainnet)
+     - 3.17.1 [`GET /v1/intel/defi/status` — Estado del subgrafo por cadena (Gratuito)](#3171-get-v1inteldefistatus--estado-del-subgrafo-por-cadena-gratuito)
+     - 3.17.2 [`POST /v1/agent/intel/defi/pools` — Top pools/pairs (x402)](#3172-post-v1agentinteldefipools--top-poolspairs-por-liquidez-x402-400-atomic-units)
+     - 3.17.3 [`POST /v1/agent/intel/defi/pool-activity` — Swaps recientes (x402)](#3173-post-v1agentinteldefipool-activity--swaps-recientes-de-un-pool-x402-900-atomic-units)
+     - 3.17.4 [`POST /v1/agent/intel/defi/scan` — Escaneo multi-cadena (x402)](#3174-post-v1agentinteldefiscan--escaneo-multi-cadena-x402-2500-atomic-units)
 4. [Casos de Error y Validaciones de Entrada](#4-casos-de-error-y-validaciones-de-entrada)
 5. [Guía de Integración para Clientes (TypeScript y Python)](#5-guía-de-integración-para-clientes-typescript-y-python)
 
@@ -154,6 +159,13 @@ The Graph endpoint es requerido en producción:
 V52_GRAPH_ENDPOINT=https://gateway.thegraph.com/api/{api_key}/subgraphs/id/...
 V52_GRAPH_API_KEY=tu-api-key-aqui
 ```
+
+**DeFi Subgraph Intel (§3.17):** además del par legacy de arriba (que sigue
+siendo el fallback de Ethereum), cada cadena tiene su propio subgrafo
+independiente y opcional — `V52_GRAPH_ENDPOINT_ETHEREUM` / `_AVALANCHE` /
+`_HSK` (+ `_API_KEY_*` y `_SCHEMA_*`, `uniswap_v3` o `uniswap_v2`). Ver
+[`SUBGRAPHS.md`](./SUBGRAPHS.md) para cómo elegir un subgrafo por cadena y
+por qué HSK no trae uno por defecto.
 
 #### Error Global No Controlado (HTTP 500):
 ```json
@@ -1060,6 +1072,10 @@ Vector52 establece una política de seguridad y monetización diferenciada para 
 | **`POST /v1/paid/claim-audit` (Deep / AI)** | **Protegido con x402** *(5000 atomic units USDC)* | **Protegido con x402** *(5000 atomic units USDC)* | Auditoría multi-hop exhaustiva con resúmenes generativos de IA L5 (`v52_ai_enabled`). |
 | **`POST /v1/cases/{case_id}/anchor`** | **Protegido con x402** *(2000 atomic units USDC)* | **Protegido con x402** *(2000 atomic units USDC)* | Registro inmutable de la raíz del manifest en el contrato de HashKey Chain (HSK). El pago cubre el patrocinio de gas del relayer. |
 | **`GET /v1/cases/{case_id}/package`** | **Sesión (Demo) / x402** | **Protegido con x402** *(500 atomic units USDC)* | Generación y descarga del contenedor forense autocontenido `.v52.zip` con sello de procedencia. |
+| **`GET /v1/intel/defi/status`** | **Público (Libre)** | **Público (Libre)** | Un único query `_meta` por cadena (sin pools/swaps); descubribilidad barata del canal pagado de abajo. |
+| **`POST /v1/agent/intel/defi/pools`** | No aplicable | **Protegido con x402** *(400 atomic units USDC)* | Top pools/pairs por liquidez de una cadena — el nivel más barato del DeFi Subgraph Intel. |
+| **`POST /v1/agent/intel/defi/pool-activity`** | No aplicable | **Protegido con x402** *(900 atomic units USDC)* | Swaps recientes de un pool/pair específico — drill-down de mayor valor que el listado. |
+| **`POST /v1/agent/intel/defi/scan`** | No aplicable | **Protegido con x402** *(2500 atomic units USDC)* | Escaneo agregado multi-cadena (HSK + Avalanche + Ethereum) en una sola llamada — el nivel más caro. |
 
 ---
 
@@ -1236,6 +1252,148 @@ tiene ese bloque indexado).
 ```bash
 curl http://localhost:8000/v1/anchors/0x2407b6f2529df3afbb2ab609cb236ff00b8421c7a57f78128ee58ed6d54f5005
 ```
+
+---
+
+### 3.17 DeFi Subgraph Intel — HSK / Avalanche / Ethereum Mainnet
+
+Escanea "puntos vitales" de la superficie DeFi de una cadena — los pools/pairs
+que ejecutan swaps y su actividad reciente — consultando en vivo el subgrafo
+de The Graph configurado por cadena (`V52_GRAPH_ENDPOINT_ETHEREUM` /
+`_AVALANCHE` / `_HSK`, ver [`SUBGRAPHS.md`](./SUBGRAPHS.md) para la
+justificación completa y cómo elegir/desplegar un subgrafo por cadena). Nada
+aquí se inventa: si una cadena no tiene subgrafo configurado, se reporta
+`configured: false` honestamente en vez de simular datos.
+
+Se compone de un endpoint de descubrimiento gratuito y tres endpoints pagados
+con x402, ambos consumidos vía `app/api/defi_core.py` (lógica compartida) —
+mismo patrón que `wallet_flow.py`/`agent.py` para el canal de wallet-flow.
+
+---
+
+#### 3.17.1 `GET /v1/intel/defi/status` — Estado del subgrafo por cadena (Gratuito)
+
+- **Método:** `GET`
+- **Ruta:** `/v1/intel/defi/status`
+- **Autenticación:** Pública (sin credenciales ni pago) — ejecuta un único
+  query `_meta` por cadena, nunca pools ni swaps.
+
+##### Respuesta Exitosa (HTTP 200 OK — `DefiEntrypointsStatusResponse`):
+```json
+{
+  "chains": [
+    {
+      "chain": "ethereum",
+      "network": "ethereum-mainnet",
+      "configured": true,
+      "subgraph_schema": "uniswap_v3",
+      "meta": {
+        "block_number": 18850000,
+        "block_hash": "0x...",
+        "deployment": "QmTZ8ejXJxRo7vDBS4uwqBeGoxLSWbhaA7oXa1RvxunLy7",
+        "has_indexing_errors": false
+      },
+      "warnings": []
+    },
+    {
+      "chain": "avalanche",
+      "network": "avalanche-mainnet",
+      "configured": false,
+      "subgraph_schema": null,
+      "meta": null,
+      "warnings": ["The Graph is not configured for chain 'avalanche'. Set V52_GRAPH_ENDPOINT_AVALANCHE to enable it."]
+    },
+    {
+      "chain": "hsk",
+      "network": "hsk",
+      "configured": false,
+      "subgraph_schema": null,
+      "meta": null,
+      "warnings": ["The Graph is not configured for chain 'hsk'. Set V52_GRAPH_ENDPOINT_HSK to enable it."]
+    }
+  ],
+  "retrieved_at": "2026-09-13T12:00:00+00:00"
+}
+```
+
+---
+
+#### 3.17.2 `POST /v1/agent/intel/defi/pools` — Top pools/pairs por liquidez (x402, 400 atomic units)
+
+- **Método:** `POST` · **Ruta:** `/v1/agent/intel/defi/pools`
+- **Cuerpo (`DefiPoolsJobRequest`):**
+  ```json
+  { "chain": "ethereum", "limit": 10 }
+  ```
+- **Respuesta (`AgentDefiPoolsResponse`):**
+  ```json
+  {
+    "channel": "AGENT_X402",
+    "request_id": "agent_...",
+    "result": {
+      "chain": "ethereum",
+      "network": "ethereum-mainnet",
+      "subgraph_schema": "uniswap_v3",
+      "pools": [
+        {
+          "pool_id": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+          "subgraph_schema": "uniswap_v3",
+          "token0": { "address": "0x...", "symbol": "USDC", "decimals": 6 },
+          "token1": { "address": "0x...", "symbol": "WETH", "decimals": 18 },
+          "fee_tier": 500,
+          "liquidity": "...",
+          "total_value_locked_usd": "...",
+          "volume_usd": "...",
+          "tx_count": "..."
+        }
+      ],
+      "meta": { "block_number": 18850000, "block_hash": "0x...", "deployment": "Qm...", "has_indexing_errors": false },
+      "retrieved_at": "2026-09-13T12:00:00+00:00",
+      "warnings": ["Pool/pair ranking and amounts reflect the subgraph's own indexing state; they may lag the chain head by the subgraph's indexing delay."]
+    }
+  }
+  ```
+- **HTTP 503:** la cadena solicitada no tiene subgrafo configurado.
+- **HTTP 402:** falta el header de pago x402 (mismo protocolo que §3.13).
+
+---
+
+#### 3.17.3 `POST /v1/agent/intel/defi/pool-activity` — Swaps recientes de un pool (x402, 900 atomic units)
+
+- **Método:** `POST` · **Ruta:** `/v1/agent/intel/defi/pool-activity`
+- **Cuerpo (`DefiPoolActivityJobRequest`):**
+  ```json
+  { "chain": "ethereum", "pool_address": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640", "limit": 20 }
+  ```
+- **Respuesta (`AgentDefiPoolActivityResponse`):** igual forma que `pools`, pero con `swaps: [DefiSwapEvent]` (id, timestamp, transaction_hash, sender, recipient, amount0/amount1/amount_usd).
+
+---
+
+#### 3.17.4 `POST /v1/agent/intel/defi/scan` — Escaneo multi-cadena (x402, 2500 atomic units)
+
+- **Método:** `POST` · **Ruta:** `/v1/agent/intel/defi/scan`
+- **Cuerpo (`DefiScanJobRequest`):**
+  ```json
+  { "chains": ["ethereum", "avalanche", "hsk"], "pools_limit": 10 }
+  ```
+- **Respuesta (`AgentDefiScanResponse`):** un `DefiScanChainResult` por cadena
+  solicitada (`status` + `pools` + `warnings`); una cadena sin subgrafo
+  configurado aparece con `pools: []` y su warning, sin abortar el escaneo de
+  las demás.
+
+---
+
+#### 3.17.5 Enriquecimiento aditivo de `GET /v1/providers/status` y `GET /v1/agent/capabilities`
+
+Ambos endpoints existentes **mantienen exactamente sus campos originales** y
+solo ganan campos nuevos:
+
+- `GET /v1/providers/status` → `data.the_graph.chains.{ethereum,avalanche,hsk}`
+  (status/network/schema por cadena), junto al `data.the_graph.status` y
+  `.network` que ya existían (Ethereum, por compatibilidad).
+- `GET /v1/agent/capabilities` → nuevo objeto `defi_intel` con los tres
+  endpoints y tarifas de arriba; `endpoint`/`amount_atomic` (wallet-flow)
+  no cambian.
 
 ---
 

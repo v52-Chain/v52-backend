@@ -1,0 +1,39 @@
+"""
+Minimal Uniswap-V2-shaped schema — matches the `uniswap_v2` query family in
+../../app/api/defi_core.py (pairs / reserve0 / reserve1 / swaps).
+"""
+
+type Token @entity {
+  id: ID! # token contract address
+  symbol: String!
+  name: String!
+  decimals: Int!
+}
+
+type Pair @entity {
+  id: ID! # pair contract address
+  token0: Token!
+  token1: Token!
+  reserve0: BigDecimal!
+  reserve1: BigDecimal!
+  reserveUSD: BigDecimal!
+  volumeUSD: BigDecimal!
+  txCount: BigInt!
+  createdAtBlock: BigInt!
+  createdAtTimestamp: BigInt!
+  swaps: [Swap!]! @derivedFrom(field: "pair")
+}
+
+type Swap @entity(immutable: true) {
+  id: ID! # `${txHash}-${logIndex}`
+  pair: Pair!
+  transaction: Bytes!
+  timestamp: BigInt!
+  sender: Bytes!
+  to: Bytes!
+  amount0In: BigDecimal!
+  amount1In: BigDecimal!
+  amount0Out: BigDecimal!
+  amount1Out: BigDecimal!
+  amountUSD: BigDecimal!
+}
