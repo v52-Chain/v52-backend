@@ -17,6 +17,12 @@ from app.models.access import (
 router = APIRouter(prefix="/v1/agent", tags=["agent-x402"])
 
 
+def _atomic_usdc_to_display(value: str) -> str:
+    atomic = int(value)
+    whole, fraction = divmod(atomic, 1_000_000)
+    return f"{whole}.{fraction:06d}".rstrip("0").rstrip(".")
+
+
 @router.get("/capabilities", response_model=AgentCapabilitiesResponse)
 async def agent_capabilities(
     settings: Settings = Depends(get_settings),
@@ -31,7 +37,9 @@ async def agent_capabilities(
         ready=settings.x402_configured,
         network=settings.v52_x402_network,
         asset=settings.v52_x402_asset,
+        pay_to=settings.v52_x402_pay_to,
         amount_atomic=settings.v52_x402_wallet_flow_price,
+        amount_display=_atomic_usdc_to_display(settings.v52_x402_wallet_flow_price),
         warnings=warnings,
     )
 

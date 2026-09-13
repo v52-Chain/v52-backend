@@ -1,19 +1,16 @@
-"""Agent Access integration surface consumed by the frontend PWA.
+"""Safe status bridge between the PWA/backend and the Vector52 MCP service.
 
-Per CONTRATO-INTEGRACION.md: "La PWA no habla directamente con un proceso MCP
-privilegiado. Consulta al backend de Vector52." These endpoints let the
-frontend show MCP-related UI state without ever holding a direct connection
-to `v52-mcp` (a separate repository/process).
-
-Rule enforced here: "Mientras v52-mcp no esté conectado y probado, status
-debe devolver UNAVAILABLE o INTEGRATION_PENDING. La interfaz nunca
-transforma un mock en READY." `v52_mcp_server_url` is empty until a real
-MCP server is wired up, so every response below reports UNAVAILABLE with an
-honest reason instead of simulating success.
+Paid work travels in one direction: agent -> MCP -> x402 -> backend. The PWA
+never receives the MCP wallet or its credentials; it only reads these status
+endpoints to render honest connection state and the live tool catalog.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from urllib.parse import urlsplit, urlunsplit
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import Settings, get_settings
@@ -29,36 +26,109 @@ from app.models.integrations import (
 router = APIRouter(prefix="/v1", tags=["agent-access"])
 
 _NOT_CONNECTED_REASON = (
-    "v52-mcp is a separate service that is not connected to this backend yet. "
-    "See docs/ARQUITECTURA-REPOSITORIOS.md and CONTRATO-INTEGRACION.md."
+    "v52-mcp has not been deployed/configured for this backend. "
+    "Set V52_MCP_SERVER_URL to its public /mcp URL."
 )
 
-# Documented P0 tool catalog (PROYECTO-FINAL.md §8 / CONTRATO-INTEGRACION.md
-# "MCP mapping"). Shown to the frontend as a preview of what will exist once
-# v52-mcp is connected — never presented as callable today.
-_DOCUMENTED_TOOLS: list[McpToolDescriptor] = [
-    McpToolDescriptor(name="case_status", description="Estado y warnings del caso.", payment="FREE"),
-    McpToolDescriptor(name="evidence_get", description="Evidencia por ID.", payment="FREE"),
-    McpToolDescriptor(
-        name="edge_explain", description="Por qué existe una relación (WHY THIS LINK?).", payment="FREE"
-    ),
-    McpToolDescriptor(name="package_verify", description="Verifica un paquete .v52.", payment="FREE"),
-    McpToolDescriptor(
-        name="anchor_lookup", description="Busca procedencia HSK del expediente.", payment="FREE"
-    ),
-    McpToolDescriptor(
-        name="claim_audit",
-        description="Ejecuta un análisis costoso acotado (deep/IA).",
-        payment="X402",
-    ),
-]
+
+@dataclass
+class McpProbe:
+    ready: bool = False
+    reason: str = "MCP handshake failed."
+    service: str | None = None
+    version: str | None = None
+    backend_ready: bool | None = None
+    tools: list[McpToolDescriptor] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
-@router.get(
-    "/integrations/mcp/status",
-    response_model=McpStatusResponse,
-    summary="Report whether the MCP Agent Access channel is connected",
-)
+def _mcp_http_base(raw_url: str) -> str:
+    """Normalize an MCP endpoint URL to its public health/capabilities base."""
+    parts = urlsplit(raw_url.strip())
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError("V52_MCP_SERVER_URL must be an HTTP(S) URL.")
+    path = parts.path.rstrip("/")
+    if path.endswith("/mcp"):
+        path = path[:-4]
+    return urlunsplit((parts.scheme, parts.netloc, path, "", "")).rstrip("/")
+
+
+async def _probe_mcp(server_url: str) -> McpProbe:
+    try:
+        base = _mcp_http_base(server_url)
+    except ValueError as exc:
+        return McpProbe(reason=str(exc))
+
+    try:
+        async with httpx.AsyncClient(timeout=3.0, follow_redirects=False) as client:
+            health_response = await client.get(f"{base}/health")
+            capabilities_response = await client.get(f"{base}/capabilities")
+        health_response.raise_for_status()
+        capabilities_response.raise_for_status()
+        health = health_response.json()
+        capabilities = capabilities_response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        return McpProbe(
+            reason="The configured MCP service is unreachable or returned an invalid handshake.",
+            warnings=[type(exc).__name__],
+        )
+
+    service = health.get("service")
+    version = health.get("version")
+    if health.get("status") != "ok" or service != "vector52-mcp":
+        return McpProbe(
+            reason="The configured URL did not identify itself as vector52-mcp.",
+            service=str(service) if service else None,
+            version=str(version) if version else None,
+        )
+
+    raw_tools = capabilities.get("tools")
+    backend = capabilities.get("backend") or {}
+    if not isinstance(raw_tools, list) or capabilities.get("service") != "vector52-mcp":
+        return McpProbe(
+            reason="The MCP capabilities document is incomplete.",
+            service=service,
+            version=version,
+        )
+
+    tools: list[McpToolDescriptor] = []
+    try:
+        for item in raw_tools:
+            tools.append(
+                McpToolDescriptor(
+                    name=item["name"],
+                    description=item["description"],
+                    payment=item["payment"],
+                    price_atomic=item.get("priceAtomic"),
+                )
+            )
+    except (KeyError, TypeError, ValueError) as exc:
+        return McpProbe(
+            reason="The MCP tool catalog does not match the Vector52 contract.",
+            service=service,
+            version=version,
+            warnings=[type(exc).__name__],
+        )
+
+    required = {"vector52_status", "vector52_wallet_flow"}
+    advertised = {tool.name for tool in tools}
+    backend_ready = bool(backend.get("ready"))
+    ready = capabilities.get("status") == "READY" and backend_ready and required <= advertised
+    return McpProbe(
+        ready=ready,
+        reason=(
+            "MCP handshake verified; agents can call the paid Vector52 backend."
+            if ready
+            else "MCP responded, but its backend or required tool set is not ready."
+        ),
+        service=service,
+        version=version,
+        backend_ready=backend_ready,
+        tools=tools,
+    )
+
+
+@router.get("/integrations/mcp/status", response_model=McpStatusResponse)
 async def mcp_status(settings: Settings = Depends(get_settings)) -> McpStatusResponse:
     if not settings.mcp_integration_configured:
         return McpStatusResponse(
@@ -66,21 +136,19 @@ async def mcp_status(settings: Settings = Depends(get_settings)) -> McpStatusRes
             server_configured=False,
             reason=_NOT_CONNECTED_REASON,
         )
-    # V52_MCP_SERVER_URL is set but no live handshake is implemented yet.
-    # Report UNKNOWN rather than fabricating READY from an unverified URL.
+    probe = await _probe_mcp(settings.v52_mcp_server_url)
     return McpStatusResponse(
-        state=McpIntegrationState.UNKNOWN,
+        state=McpIntegrationState.READY if probe.ready else McpIntegrationState.UNKNOWN,
         server_configured=True,
-        reason="V52_MCP_SERVER_URL is configured but connectivity has not been verified.",
-        warnings=["MCP handshake is not implemented; configuring the URL alone does not mean READY."],
+        reason=probe.reason,
+        service=probe.service,
+        version=probe.version,
+        backend_ready=probe.backend_ready,
+        warnings=probe.warnings,
     )
 
 
-@router.get(
-    "/integrations/mcp/tools",
-    response_model=McpToolsResponse,
-    summary="List MCP tools (documented catalog; not callable until v52-mcp is connected)",
-)
+@router.get("/integrations/mcp/tools", response_model=McpToolsResponse)
 async def mcp_tools(settings: Settings = Depends(get_settings)) -> McpToolsResponse:
     if not settings.mcp_integration_configured:
         return McpToolsResponse(
@@ -88,45 +156,36 @@ async def mcp_tools(settings: Settings = Depends(get_settings)) -> McpToolsRespo
             tools=[],
             reason=_NOT_CONNECTED_REASON,
         )
+    probe = await _probe_mcp(settings.v52_mcp_server_url)
     return McpToolsResponse(
-        state=McpIntegrationState.UNKNOWN,
-        tools=_DOCUMENTED_TOOLS,
-        reason="Catalog reflects the documented P0 tools; live availability is unverified.",
+        state=McpIntegrationState.READY if probe.ready else McpIntegrationState.UNKNOWN,
+        tools=probe.tools if probe.ready else [],
+        reason=probe.reason,
     )
 
 
-@router.post(
-    "/agent-jobs",
-    response_model=AgentJobResponse,
-    summary="Submit a job to the MCP agent (unavailable until v52-mcp is connected)",
-)
+@router.post("/agent-jobs", response_model=AgentJobResponse)
 async def submit_agent_job(
     body: AgentJobRequest,
     settings: Settings = Depends(get_settings),
 ) -> AgentJobResponse:
-    if not settings.mcp_integration_configured:
-        raise HTTPException(
-            status_code=503,
-            detail=_NOT_CONNECTED_REASON,
-        )
+    # Deliberately no reverse dispatch. The external agent invokes MCP; MCP then
+    # invokes this backend with x402. Sending jobs backend -> MCP would create a
+    # confused-deputy payment risk and is not needed for the web frontend.
     raise HTTPException(
-        status_code=503,
+        status_code=405 if settings.mcp_integration_configured else 503,
         detail=(
-            "V52_MCP_SERVER_URL is configured but job dispatch is not implemented yet. "
-            "This endpoint will not fabricate a job."
+            "Agent jobs must be initiated by Claude/Codex through vector52-mcp; "
+            "the backend does not remotely command the wallet-bearing MCP service."
+            if settings.mcp_integration_configured
+            else _NOT_CONNECTED_REASON
         ),
     )
 
 
-@router.get(
-    "/agent-jobs/{job_id}",
-    response_model=AgentJobResponse,
-    summary="Read MCP agent job status",
-)
+@router.get("/agent-jobs/{job_id}", response_model=AgentJobResponse)
 async def get_agent_job(job_id: str) -> AgentJobResponse:
-    # No agent job can exist yet: submit_agent_job never creates one while
-    # v52-mcp is disconnected. A 404 here is accurate, not a placeholder.
     raise HTTPException(
         status_code=404,
-        detail=f"Agent job '{job_id}' not found. The MCP agent channel is not connected yet.",
+        detail=f"Agent job '{job_id}' not found. Agent results are returned synchronously through MCP.",
     )

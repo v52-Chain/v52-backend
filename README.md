@@ -80,7 +80,10 @@ V52_X402_PAY_TO=0xf92A1E3Fa1a163FEeB8c3753165410374fB08339
 V52_X402_NETWORK=eip155:43113
 V52_X402_ASSET=0x5425890298aed601595a70AB815c96711a31Bc65
 V52_X402_WALLET_FLOW_PRICE=1000
+V52_MCP_SERVER_URL=https://tu-vector52-mcp.example/mcp
 ```
+
+El backend no ordena pagos al MCP. El sentido seguro es `Claude/Codex → MCP → x402 → backend`; la PWA solo consulta `/v1/integrations/mcp/status` y `/v1/integrations/mcp/tools`. El estado pasa a `READY` únicamente cuando `/health` identifica `vector52-mcp`, `/capabilities` confirma el backend y están presentes las tools requeridas.
 
 Las API keys y URLs de providers son backend-only. No deben aparecer en `VITE_*`,
 respuestas HTTP, logs, screenshots ni expedientes `.v52`.
@@ -102,6 +105,7 @@ respuestas HTTP, logs, screenshots ni expedientes `.v52`.
 No secrets may be returned by API errors or logs.
 
 See [`docs/FUNCIONAMIENTO.md`](docs/FUNCIONAMIENTO.md) for the full architecture and [`docs/API.md`](docs/API.md) for the endpoint reference.
+El contrato desplegable entre agentes, MCP, x402, backend y frontend está en [`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md).
 
 ---
 

@@ -31,7 +31,7 @@ class McpIntegrationState(StrEnum):
 
 
 class McpToolDescriptor(BaseModel):
-    """One tool the MCP server would expose, as documented (not yet connected)."""
+    """One live tool advertised by the verified Vector52 MCP service."""
 
     name: str
     description: str
@@ -43,6 +43,9 @@ class McpStatusResponse(BaseModel):
     state: McpIntegrationState
     server_configured: bool
     reason: str
+    service: str | None = None
+    version: str | None = None
+    backend_ready: bool | None = None
     warnings: list[str] = Field(default_factory=list)
 
 

@@ -74,13 +74,18 @@ class AuditPipeline:
         self.resolver = UniswapV3Resolver()
         self.contribution_analysis = DirectFlowAnalysis()
 
-    async def run(self, request: ClaimAuditRequest) -> ClaimAuditResponse:
+    async def run(
+        self,
+        request: ClaimAuditRequest,
+        *,
+        case_id: str | None = None,
+    ) -> ClaimAuditResponse:
         """Execute the full audit pipeline for the given request."""
         t_total = time.monotonic()
         timing_ms: dict[str, int] = {}
         warnings: list[str] = []
 
-        case_id = make_case_id(
+        case_id = case_id or make_case_id(
             chain_id=request.chain_id,
             tx_hash=request.transaction_hash,
             subject=request.subject,

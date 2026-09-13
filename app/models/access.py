@@ -92,6 +92,10 @@ class AgentCapabilitiesResponse(BaseModel):
     payment_protocol: Literal["x402"] = "x402"
     network: str
     asset: str
+    pay_to: str
     amount_atomic: str
+    amount_display: str
+    asset_decimals: Literal[6] = 6
+    billing_model: Literal["PER_REQUEST"] = "PER_REQUEST"
     automatic_payment_owner: Literal["MCP_CLIENT"] = "MCP_CLIENT"
     warnings: list[str] = Field(default_factory=list)
