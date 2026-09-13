@@ -26,7 +26,13 @@ dependencies = [
     # ── Multipart (package upload) ──────────────────────────────────────────────────
     "python-multipart>=0.0.20",
     # ── Agent payments (Avalanche Fuji / x402) ───────────────────────────────
-    "x402[evm]>=2.0.0",
+    # Pinned exact: x402 is an actively-changing protocol/SDK. An open range
+    # let different teammates end up on different versions depending on when
+    # they installed, which is the leading suspect behind "works for me, not
+    # for them" payment failures. Verified working end-to-end (real settled
+    # payment on Avalanche Fuji, see docs/X402_MCP_FRONTEND.md §5.3/§5.4)
+    # against @x402/fetch, @x402/core, @x402/evm 2.25.0 on the TS side.
+    "x402[evm]==2.22.0",
 ]
 
 [project.optional-dependencies]
