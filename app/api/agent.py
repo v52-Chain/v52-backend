@@ -73,6 +73,7 @@ async def agent_wallet_flow(
             status_code=503,
             detail="The x402 agent channel is disabled or incompletely configured.",
         )
+    request_id = f"agent_{uuid.uuid4().hex}"
     result = await acquire_wallet_flow(
         chain_id=body.chain_id,
         address=body.target_address,
@@ -80,9 +81,11 @@ async def agent_wallet_flow(
         from_date=body.from_date,
         to_date=body.to_date,
         settings=settings,
+        channel="AGENT_X402",
+        external_request_id=request_id,
     )
     return AgentWalletFlowResponse(
-        request_id=f"agent_{uuid.uuid4().hex}",
+        request_id=request_id,
         result=result,
     )
 

@@ -13,8 +13,38 @@ from app.evidence.provenance import utcnow
 from app.models.wallet_flow import WalletFlowLimits, WalletFlowResponse
 from app.providers.alchemy_transfers import AlchemyTransfersProvider
 from app.providers.base import ProviderError
+from app.storage.supabase_graph import GraphChannel, ingest_wallet_flow
 
 _ADDRESS = re.compile(r"^0x[a-fA-F0-9]{40}$")
+
+# Strong references for fire-and-forget Supabase ingestion tasks. asyncio only
+# holds a weak reference to a task created via create_task, so an
+# unreferenced task can be garbage-collected mid-flight; this set keeps each
+# task alive until it completes, then discards itself via the callback below.
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+def _fire_and_forget_ingest(
+    *,
+    result: WalletFlowResponse,
+    channel: GraphChannel,
+    settings: Settings,
+    actor_wallet: str | None,
+    external_request_id: str | None,
+) -> None:
+    if not settings.supabase_configured:
+        return
+    task = asyncio.create_task(
+        ingest_wallet_flow(
+            result=result,
+            channel=channel,
+            settings=settings,
+            actor_wallet=actor_wallet,
+            external_request_id=external_request_id,
+        )
+    )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def acquire_wallet_flow(
@@ -25,6 +55,9 @@ async def acquire_wallet_flow(
     from_date: date | None,
     to_date: date | None,
     settings: Settings,
+    channel: GraphChannel = "INTERNAL",
+    actor_wallet: str | None = None,
+    external_request_id: str | None = None,
 ) -> WalletFlowResponse:
     """Shared deterministic core used by public, web-wallet and agent channels."""
     if chain_id != 1:
@@ -81,7 +114,7 @@ async def acquire_wallet_flow(
             "The date window is filtered from paginated Alchemy metadata and capped at "
             f"{max_pages} pages per direction; absence of results is not proof of no activity."
         )
-    return WalletFlowResponse(
+    flow_response = WalletFlowResponse(
         address=address.lower(),
         acquired_at=utcnow(),
         incoming=incoming,
@@ -97,3 +130,11 @@ async def acquire_wallet_flow(
         ),
         warnings=warnings,
     )
+    _fire_and_forget_ingest(
+        result=flow_response,
+        channel=channel,
+        settings=settings,
+        actor_wallet=actor_wallet,
+        external_request_id=external_request_id,
+    )
+    return flow_response
