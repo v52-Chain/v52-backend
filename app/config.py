@@ -173,6 +173,17 @@ class Settings(BaseSettings):
     v52_mongodb_uri: str = Field(default="", alias="V52_MONGODB_URI")
     v52_mongodb_database: str = Field(default="vector52", alias="V52_MONGODB_DATABASE")
 
+    # Supabase (optional): persists WalletFlowResponse for the graph/dashboard.
+    # See docs/SUPABASE_GRAPH_DATA_MODEL.md and v52-supabase/. Never part of
+    # the evidence chain — acquisition and the API response never depend on
+    # this succeeding. Writes go through graph_ingest_wallet_flow(), the only
+    # RPC granted to service_role; anon/authenticated get nothing (RLS).
+    v52_supabase_enabled: bool = Field(default=False, alias="V52_SUPABASE_ENABLED")
+    v52_supabase_url: str = Field(default="", alias="V52_SUPABASE_URL")
+    v52_supabase_service_role_key: str = Field(
+        default="", alias="V52_SUPABASE_SERVICE_ROLE_KEY"
+    )
+
     # Upstash Redis (optional)
     v52_cache_enabled: bool = Field(default=False, alias="V52_CACHE_ENABLED")
     v52_upstash_redis_rest_url: str = Field(default="", alias="V52_UPSTASH_REDIS_REST_URL")
@@ -335,6 +346,14 @@ class Settings(BaseSettings):
             )
         )
 
+    @property
+    def supabase_configured(self) -> bool:
+        return bool(
+            self.v52_supabase_enabled
+            and self.v52_supabase_url
+            and self.v52_supabase_service_role_key
+        )
+
     @field_validator("v52_storage_backend")
     @classmethod
     def validate_storage_backend(cls, value: str) -> str:
@@ -386,6 +405,8 @@ class Settings(BaseSettings):
             "v52_ai_enabled": self.v52_ai_enabled,
             "v52_x402_enabled": self.v52_x402_enabled,
             "v52_x402_network": self.v52_x402_network,
+            "v52_supabase_enabled": self.v52_supabase_enabled,
+            "supabase_configured": self.supabase_configured,
             "mcp_integration_configured": self.mcp_integration_configured,
             "v52_mongodb_database": self.v52_mongodb_database,
             "v52_rpc_url": _REDACTED if self.v52_rpc_url else "(not set)",
@@ -410,6 +431,10 @@ class Settings(BaseSettings):
                 _REDACTED if self.v52_upstash_redis_rest_token else "(not set)"
             ),
             "v52_mcp_server_url": _REDACTED if self.v52_mcp_server_url else "(not set)",
+            "v52_supabase_url": _REDACTED if self.v52_supabase_url else "(not set)",
+            "v52_supabase_service_role_key": (
+                _REDACTED if self.v52_supabase_service_role_key else "(not set)"
+            ),
         }
 
 

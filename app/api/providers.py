@@ -49,6 +49,13 @@ async def provider_status(settings: Settings = Depends(get_settings)) -> ApiEnve
             "network": "avalanche",
             "reason": "MCP/x402 settlement is owned by v52-mcp and not connected here yet.",
         },
+        "supabase": {
+            # CONFIGURED means writes are enabled, not that the project is
+            # reachable right now — no live round trip here, matching how
+            # the_graph reports above. Optional, non-evidence persistence:
+            # see v52-supabase/README.md and app/storage/supabase_graph.py.
+            "status": "CONFIGURED" if settings.supabase_configured else "UNCONFIGURED",
+        },
     }
     warnings: list[str] = []
     errors: list[ApiError] = []

@@ -106,5 +106,7 @@ async def web_wallet_flow(
         from_date=body.from_date,
         to_date=body.to_date,
         settings=settings,
+        channel="WEB",
+        actor_wallet=principal.address,
     )
     return WebWalletFlowResponse(actor_wallet=principal.address, result=result)
