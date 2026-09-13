@@ -23,7 +23,8 @@
 - **Canal de acceso Web (`WEB`)**: Autenticación criptográfica SIWE (EIP-4361) off-chain (`/v1/auth/wallet/challenge`, `/v1/auth/wallet/verify`, `/v1/auth/wallet/me`) con almacenamiento de sesiones Bearer en memoria (`WalletSessionStore`) para la PWA de navegador;
 - **Canal de acceso Agentes (`AGENT_X402`)**: Micropagos M2M autónomos con middleware ASGI de x402 v2 (`/v1/agent/capabilities`, `/v1/agent/investigations/wallet-flow`) delegando la liquidación on-chain al Facilitador OpenZeppelin Relayer en Avalanche Fuji (`eip155:43113`);
 - **Motor unificado de transferencias**: `acquire_wallet_flow` determinista compartido entre web y agentes mediante Alchemy Transfers API;
-- pruebas unitarias (incluye llamadas reales a RPC/The Graph, sin mocks; ver `docs/FUNCIONAMIENTO.md` §12).
+- **Anclaje HSK (`app/onchain/`, `app/api/anchor.py`)**: `POST /v1/cases/{case_id}/anchor` calcula `sha256(manifest.json)` del paquete `.v52.zip` ya construido y lo ancla en `V52EvidenceRegistry` (HSK Testnet, contrato en `v52-onchain/contracts/hsk/`) firmando con `HSK_ANCHOR_PRIVATE_KEY`; `GET /v1/anchors/{manifest_root}` expone la consulta pública sin necesidad de llave. Verificado end-to-end contra el contrato real desplegado — ver `docs/API.md` y `deployments/hsk-testnet.json` en `v52-onchain`;
+- pruebas unitarias (incluye llamadas reales a RPC/The Graph/HSK, sin mocks; ver `docs/FUNCIONAMIENTO.md` §12).
 
 La suite fue verificada el 12 de septiembre: **72 tests pasaron** (4 adicionales del gateway de The Graph se omiten automáticamente si `V52_GRAPH_API_KEY` no está configurada). Esto valida adquisición, modelos, configuración, CORS, autenticación y evidencia; no prueba un Claim Audit forense completo. `UniswapV3Resolver`, Contribution Analysis, predicados y auditor todavía son stubs, y el endpoint público devuelve `UNKNOWN` de forma intencional.
 
@@ -51,7 +52,24 @@ sigue aceptado como fallback legacy para Ethereum, pero el nombre preferido es
 `ALCHEMY_API_KEY`. HSK no está disponible en Alchemy, por lo que siempre requiere su
 propio `HSK_RPC_URL`.
 
-### 2. Canal de Micropagos x402 (Agentes e IAs)
+### 2. Anclaje HSK (`V52EvidenceRegistry`)
+`GET /v1/anchors/{manifest_root}` solo necesita RPC + dirección del contrato
+(lectura pública). `POST /v1/cases/{case_id}/anchor` además necesita una
+llave firmante con fondos en HSK y allow-listada como `issuer` en el
+contrato (ver `v52-onchain/SECURITY.md`):
+
+```dotenv
+HSK_RPC_URL=https://testnet.hsk.xyz
+HSK_CHAIN_ID=133
+HSK_EVIDENCE_REGISTRY_ADDRESS=0x3422820Ef9FBC8e0206E4CBcB6369dBd14BE18c4
+HSK_EXPLORER_URL=https://testnet-explorer.hsk.xyz
+HSK_ANCHOR_PRIVATE_KEY=
+```
+
+Ver `v52-onchain/deployments/hsk-testnet.json` para la dirección/tx vigente
+y `v52-onchain/contracts/hsk/V52EvidenceRegistry.sol` para el contrato.
+
+### 3. Canal de Micropagos x402 (Agentes e IAs)
 Para habilitar el canal de pago M2M para servidores MCP y agentes de IA:
 
 ```dotenv
@@ -78,6 +96,7 @@ respuestas HTTP, logs, screenshots ni expedientes `.v52`.
 - `app/contribution/` — Jhamil.
 - `app/claims/` — Jhamil + Omar.
 - `app/packaging/` — Saúl.
+- `app/onchain/` — Saúl; HSK `V52EvidenceRegistry` client, mirrors `v52-onchain`.
 - `app/orchestration/` — Omar; all developers review.
 
 No secrets may be returned by API errors or logs.

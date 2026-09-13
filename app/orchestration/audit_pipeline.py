@@ -57,7 +57,7 @@ class AuditPipeline:
         self.vault = EvidenceVault(settings.data_dir)
         self.repo = FileCaseRepository(settings.data_dir)
 
-        rpc = EthereumRpcProvider(settings.v52_rpc_url) if settings.rpc_configured else None
+        rpc = EthereumRpcProvider(settings.alchemy_eth_rpc_url) if settings.rpc_configured else None
         graph = (
             TheGraphProvider(
                 endpoint=settings.v52_graph_endpoint,

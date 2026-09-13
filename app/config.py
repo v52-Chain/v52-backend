@@ -95,6 +95,37 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("HSK_CHAIN_ID", "V52_HSK_CHAIN_ID"),
     )
 
+    # HSK V52EvidenceRegistry (manifest anchoring). The registry only ever
+    # receives hashes, a schema version and a non-sensitive case_id — never
+    # the manifest itself, wallets under investigation or claims. See
+    # v52-onchain/contracts/hsk/V52EvidenceRegistry.sol and
+    # v52-onchain/README.md for the full contract.
+    v52_hsk_evidence_registry_address: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "HSK_EVIDENCE_REGISTRY_ADDRESS", "V52_HSK_EVIDENCE_REGISTRY_ADDRESS"
+        ),
+    )
+    v52_hsk_anchor_private_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("HSK_ANCHOR_PRIVATE_KEY", "V52_HSK_ANCHOR_PRIVATE_KEY"),
+    )
+    v52_hsk_explorer_url: str = Field(
+        default="https://testnet-explorer.hsk.xyz",
+        validation_alias=AliasChoices("HSK_EXPLORER_URL", "V52_HSK_EXPLORER_URL"),
+    )
+    v52_hsk_anchor_gas_limit: int = Field(
+        default=400_000,
+        ge=21_000,
+        validation_alias=AliasChoices("HSK_ANCHOR_GAS_LIMIT", "V52_HSK_ANCHOR_GAS_LIMIT"),
+    )
+    v52_hsk_methodology_version: str = Field(
+        default="v52-contribution-0.1.0",
+        validation_alias=AliasChoices(
+            "HSK_METHODOLOGY_VERSION", "V52_HSK_METHODOLOGY_VERSION"
+        ),
+    )
+
     # The Graph
     v52_graph_endpoint: str = Field(default="", alias="V52_GRAPH_ENDPOINT")
     v52_graph_api_key: str = Field(default="", alias="V52_GRAPH_API_KEY")
@@ -206,6 +237,16 @@ class Settings(BaseSettings):
         return bool(self.hsk_rpc_url)
 
     @property
+    def hsk_registry_configured(self) -> bool:
+        """The read side (GET /v1/anchors/{root}) only needs RPC + address."""
+        return bool(self.hsk_rpc_configured and self.v52_hsk_evidence_registry_address)
+
+    @property
+    def hsk_anchor_configured(self) -> bool:
+        """The write side (POST /v1/cases/{id}/anchor) also needs a signer key."""
+        return bool(self.hsk_registry_configured and self.v52_hsk_anchor_private_key)
+
+    @property
     def rpc_configured(self) -> bool:
         """Backward-compatible flag for Ethereum RPC availability."""
         return self.alchemy_configured
@@ -263,6 +304,9 @@ class Settings(BaseSettings):
             "alchemy_configured": self.alchemy_configured,
             "alchemy_avax_configured": self.alchemy_avax_configured,
             "hsk_rpc_configured": self.hsk_rpc_configured,
+            "hsk_registry_configured": self.hsk_registry_configured,
+            "hsk_anchor_configured": self.hsk_anchor_configured,
+            "hsk_evidence_registry_address": self.v52_hsk_evidence_registry_address or "(not set)",
             "graph_configured": self.graph_configured,
             "x402_configured": self.x402_configured,
             "rpc_timeout_ms": self.rpc_timeout_ms,
@@ -283,6 +327,9 @@ class Settings(BaseSettings):
             "alchemy_eth_rpc_url": _REDACTED if self.alchemy_eth_rpc_url else "(not set)",
             "alchemy_avax_rpc_url": _REDACTED if self.alchemy_avax_rpc_url else "(not set)",
             "hsk_rpc_url": _REDACTED if self.hsk_rpc_url else "(not set)",
+            "hsk_anchor_private_key": (
+                _REDACTED if self.v52_hsk_anchor_private_key else "(not set)"
+            ),
             "v52_graph_api_key": _REDACTED if self.v52_graph_api_key else "(not set)",
             "v52_mongodb_uri": _REDACTED if self.v52_mongodb_uri else "(not set)",
             "v52_ai_api_key": _REDACTED if self.v52_ai_api_key else "(not set)",
