@@ -1,6 +1,6 @@
-# Guía de Integración x402 — Servidor MCP y Frontend (PWA)
+# Guía de Integración x402 — Servidor MCP
 
-> Este manual es la contraparte práctica de [`FUNCIONAMIENTO.md` §13](./FUNCIONAMIENTO.md#13-modelo-de-acceso-dual-humanos-siwe-vs-agentes-artificiales-x402) y [`API.md` §3.13–3.14](./API.md#313-canal-de-agentes-e-ias-con-x402-m2m). Está escrito para quien va a **consumir** el canal x402 de Vector52 desde un servidor MCP (agente/IA) o desde el frontend (PWA), no para quien mantiene el backend.
+> Este manual es la contraparte práctica de [`FUNCIONAMIENTO.md` §13](./FUNCIONAMIENTO.md#13-modelo-de-acceso-dual-humanos-siwe-vs-agentes-artificiales-x402) y [`API.md` §3.13–3.14](./API.md#313-canal-de-agentes-e-ias-con-x402-m2m). Está escrito para quien va a consumir el canal x402 de Vector52 desde un servidor MCP (agente/IA), no para quien mantiene el backend. La integración del frontend PWA está documentada en [`X402_FRONTEND.md`](./X402_FRONTEND.md).
 
 ---
 
@@ -347,65 +347,7 @@ Esto descarta un bug estructural en el formato JSON entre ambos lenguajes. **La 
 
 ---
 
-## 7. Guía de integración — Frontend (PWA)
-
-### 7.1 Estado actual: el canal humano **no usa x402**
-
-Para el usuario humano en el navegador, `POST /v1/web/investigations/wallet-flow` usa sesión Bearer vía **Sign-In with Ethereum (SIWE)**, no x402 (ver `FUNCIONAMIENTO.md` §13.2). Esto es intencional: pedirle una firma de pago on-chain por cada clic destruiría la UX. El frontend de hoy **no necesita** integrar ningún cliente x402 para ese flujo.
-
-Nada que implementar aquí más allá de lo ya descrito en `API.md` para `/v1/auth/wallet/*` y `/v1/web/investigations/wallet-flow`.
-
-### 7.2 Dónde SÍ aparecerá x402 en el frontend (Nivel 3, pendiente de implementar en backend)
-
-La matriz de `API.md` §3.14 y `FUNCIONAMIENTO.md` §13.5 documenta que `POST /v1/paid/claim-audit` (deep/IA), `POST /v1/cases/{case_id}/anchor` y `GET /v1/cases/{case_id}/package` deben cobrar **tanto a humanos como a agentes** vía x402 — pero hoy **no está implementado en el backend** (`claim_audit.py` y `cases.py` no tienen `RouteConfig` en `x402.py`; no existe endpoint `anchor`). Cuando se implemente el lado servidor (siguiendo el patrón de §8), el frontend deberá:
-
-1. Llamar el endpoint normalmente.
-2. Si recibe `402`, decodificar `Payment-Required` (igual que el agente).
-3. Pedirle a la wallet conectada del usuario (vía `wagmi`/`viem`, MetaMask, etc.) que firme la autorización EIP-712 `exact` — **no** una clave privada cruda como en el servidor MCP, sino `walletClient.signTypedData(...)` del proveedor inyectado.
-4. Reintentar con el header `Payment-Signature`.
-
-Boceto (para cuando el backend exponga esos endpoints con x402):
-
-```typescript
-// frontend/src/lib/x402Browser.ts
-import { wrapFetchWithPayment } from "@x402/fetch";
-import { x402Client } from "@x402/core/client";
-import { ExactEvmScheme } from "@x402/evm/exact/client";
-import type { WalletClient } from "viem";
-
-export function createBrowserX402Fetch(walletClient: WalletClient) {
-  const client = new x402Client();
-  // spendControls habilitado en el navegador: limitar monto máximo por pago
-  // para que un sitio comprometido no pueda drenar la wallet del usuario.
-  client.spendControls = { allowedAssets: true, maxAmountPerPayment: "10000" };
-
-  const browserSigner = {
-    address: walletClient.account!.address,
-    signTypedData: (domain: unknown, types: unknown, primaryType: string, message: unknown) =>
-      walletClient.signTypedData({
-        account: walletClient.account!,
-        domain: domain as never,
-        types: types as never,
-        primaryType: primaryType as never,
-        message: message as never,
-      }),
-  };
-
-  client.register("eip155:43113", new ExactEvmScheme(browserSigner as never));
-  return wrapFetchWithPayment(fetch, client);
-}
-```
-
-> ⚠️ A diferencia del servidor MCP, en el navegador **siempre** hay que dejar `spendControls` activo con un tope (`maxAmountPerPayment`) — nunca `false`. El servidor MCP corre en un entorno controlado por el propio proyecto; el frontend corre en la máquina del usuario final con su wallet real conectada.
-
-### 7.3 Seguridad para el frontend
-
-- Nunca envíes `V52_X402_FACILITATOR_API_KEY` al navegador — no existe ninguna razón para que el frontend lo necesite; solo el backend habla con el facilitador.
-- Todo pago x402 desde el navegador debe pasar por la wallet conectada del usuario (firma explícita), nunca por una clave privada embebida en el bundle del frontend.
-
----
-
-## 8. Cómo extender el patrón a un nuevo endpoint x402 (Nivel 3)
+## 7. Cómo extender el patrón a un nuevo endpoint x402 (Nivel 3)
 
 Cuando se implemente `claim-audit`/`anchor`/`package` bajo x402, el cambio en `app/payments/x402.py` es agregar una entrada más al diccionario `routes` de `configure_x402` — el middleware ya soporta múltiples rutas:
 
@@ -436,7 +378,7 @@ No hace falta duplicar `BearerAuthProvider` ni `x402ResourceServer` — son comp
 
 ---
 
-## 9. Probar localmente sin el facilitador real
+## 8. Probar localmente sin el facilitador real
 
 Cuando el túnel ngrok/relayer no esté disponible (como durante esta verificación), se puede levantar un facilitador mock mínimo para validar la integración del cliente (MCP o frontend) contra el backend real:
 
@@ -482,7 +424,7 @@ Con esto, cualquier cliente (el servidor MCP en TS/Python, o el fetch del fronte
 
 ---
 
-## 10. Checklist de integración
+## 9. Checklist de integración
 
 - [ ] El cliente llama `GET /v1/agent/capabilities` antes de intentar pagar.
 - [ ] El cliente sabe decodificar el header `Payment-Required` (base64 → JSON).

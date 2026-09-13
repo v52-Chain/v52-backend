@@ -41,6 +41,9 @@
      - 3.13.1 [`GET /v1/agent/capabilities` — Capacidades de Pago x402](#3131-get-v1agentcapabilities--capacidades-de-pago-x402)
      - 3.13.2 [`POST /v1/agent/investigations/wallet-flow` — Flujo Forense Pagado con x402](#3132-post-v1agentinvestigationswallet-flow--flujo-forense-pagado-con-x402)
    - 3.14 [Matriz de Protección y Políticas x402 (Humanos vs Agentes Artificiales)](#314-matriz-de-protección-y-políticas-x402-humanos-vs-agentes-artificiales)
+   - 3.16 [Anclaje HSK (`V52EvidenceRegistry`)](#316-anclaje-hsk-v52evidenceregistry)
+     - 3.16.1 [`POST /v1/cases/{case_id}/anchor` — Anclar el manifest de un caso](#3161-post-v1casescase_idanchor--anclar-el-manifest-de-un-caso)
+     - 3.16.2 [`GET /v1/anchors/{manifest_root}` — Consultar procedencia de un anchor](#3162-get-v1anchorsmanifest_root--consultar-procedencia-de-un-anchor)
 4. [Casos de Error y Validaciones de Entrada](#4-casos-de-error-y-validaciones-de-entrada)
 5. [Guía de Integración para Clientes (TypeScript y Python)](#5-guía-de-integración-para-clientes-typescript-y-python)
 
@@ -1104,6 +1107,135 @@ Siempre responde `503` mientras `v52-mcp` no esté conectado — **nunca fabrica
 #### `GET /v1/agent-jobs/{job_id}`
 
 Siempre responde `404`: ningún job puede existir mientras `POST /v1/agent-jobs` no crea ninguno.
+
+---
+
+### 3.16 Anclaje HSK (`V52EvidenceRegistry`)
+
+Ancla y consulta el compromiso criptográfico de un expediente `.v52` en el
+contrato `V52EvidenceRegistry` de HashKey Chain
+(`v52-onchain/contracts/hsk/V52EvidenceRegistry.sol`). El contrato **nunca**
+recibe el manifest completo, la wallet investigada, el claim ni el
+veredicto — solo `sha256(manifest.json)`, un hash de metodología, la
+versión de esquema y el `case_id` no sensible. Ver
+`v52-onchain/README.md` para qué prueba y qué no prueba este anclaje.
+
+#### 3.16.1 `POST /v1/cases/{case_id}/anchor` — Anclar el manifest de un caso
+
+- **Método:** `POST`
+- **Ruta:** `/v1/cases/{case_id}/anchor`
+- **Content-Type:** `application/json` (cuerpo opcional)
+- **Precondición:** el caso debe existir y su paquete `.v52.zip` debe haber
+  sido generado (`POST /v1/claim-audit` o el pipeline de auditoría
+  correspondiente construye el paquete automáticamente al completar).
+
+##### Cuerpo de la Petición (opcional, `AnchorCaseRequest`):
+```json
+{
+  "supersedes": "0x2407b6f2529df3afbb2ab609cb236ff00b8421c7a57f78128ee58ed6d54f5005"
+}
+```
+- `supersedes` (`string`, opcional): `manifest_root` (0x + 64 hex) de un
+  anchor previo que este reemplaza. Omitir para un primer anclaje.
+
+##### Respuesta Exitosa (HTTP 200 OK — `AnchorCaseResponse`):
+```json
+{
+  "case_id": "case_1_4a8b12f0_d8da6b_143161cd",
+  "manifest_root": "0x0e9faa2b1757eceb4d45d2cda883e0dbfb6171d8e5896b76201397dfe57b5179",
+  "methodology_hash": "0xe0a774b844f155aa02d7513a07fdd5c01ef1ea58d7ece268cc4a2673b38b8ad3",
+  "schema_version": "0.1.0",
+  "issuer": "0x0f26475928053737C3CCb143Ef9B28F8eDab04C7",
+  "supersedes": null,
+  "chain_id": 133,
+  "tx_hash": "0x966e13422e9c7df2c60b0f7e19f971101a182e8278a18998ac03dc96e33e077a",
+  "block_number": 33036560,
+  "gas_used": 217512,
+  "explorer_tx_url": "https://testnet-explorer.hsk.xyz/tx/0x966e13422e9c7df2c60b0f7e19f971101a182e8278a18998ac03dc96e33e077a",
+  "explorer_address_url": "https://testnet-explorer.hsk.xyz/address/0x3422820Ef9FBC8e0206E4CBcB6369dBd14BE18c4",
+  "already_anchored": false
+}
+```
+Respuesta real capturada contra HSK Testnet el 13 de septiembre de 2026
+(primer anclaje de un caso nunca antes anclado — sin reintentos).
+
+`manifest_root` es siempre `sha256(manifest.json)` **exactamente como fue
+empaquetado** dentro del `.v52.zip` — el mismo hash que verificaría
+`POST /v1/verify`. Reintentar este endpoint con un paquete sin cambios es
+**idempotente**: si el `manifest_root` ya está anclado, no se envía una
+nueva transacción y `already_anchored` es `true`.
+
+##### Respuestas de Error:
+- **HTTP 404 Not Found:** caso inexistente, o paquete `.v52.zip` no
+  construido todavía.
+  ```json
+  {"detail": "Package for case 'case_...' has not been built yet. Run a full audit to generate the .v52.zip before anchoring."}
+  ```
+- **HTTP 400 Bad Request:** `manifest.json` ausente/corrupto en el ZIP, o
+  el contrato revirtió por una condición de negocio (p. ej.
+  `supersedes` desconocido).
+- **HTTP 502 Bad Gateway:** el RPC de HSK no respondió, o la transacción
+  fue minada pero el registro aún no es legible (se reintenta
+  automáticamente 3 veces con backoff de 2s antes de devolver este error).
+- **HTTP 503 Service Unavailable:** `HSK_RPC_URL`,
+  `HSK_EVIDENCE_REGISTRY_ADDRESS` o `HSK_ANCHOR_PRIVATE_KEY` no están
+  configuradas.
+  ```json
+  {"detail": "HSK anchoring is not configured. Set HSK_RPC_URL, HSK_EVIDENCE_REGISTRY_ADDRESS and HSK_ANCHOR_PRIVATE_KEY."}
+  ```
+
+##### Ejemplo con cURL:
+```bash
+curl -X POST http://localhost:8000/v1/cases/case_1_4a8b12f0_d8da6b_261bc3a1/anchor \
+  -H "Content-Type: application/json" -d '{}'
+```
+
+#### 3.16.2 `GET /v1/anchors/{manifest_root}` — Consultar procedencia de un anchor
+
+- **Método:** `GET`
+- **Ruta:** `/v1/anchors/{manifest_root}`
+- **Autenticación:** Pública — cualquiera puede verificar la procedencia de
+  un `manifest_root`, sin necesitar la llave firmante del backend.
+
+##### Respuesta Exitosa (HTTP 200 OK — `AnchorLookupResponse`):
+```json
+{
+  "manifest_root": "0x2407b6f2529df3afbb2ab609cb236ff00b8421c7a57f78128ee58ed6d54f5005",
+  "methodology_hash": "0x19eb9203d4b018144e7304399823b1bcc9dd19ea94519d4ad1861d8e21041986",
+  "schema_version": "0.1.0",
+  "case_id": "case_smoke_test_deploy_verification",
+  "issuer": "0x0f26475928053737C3CCb143Ef9B28F8eDab04C7",
+  "block_number": 33035723,
+  "timestamp": 1789258102,
+  "supersedes": null,
+  "chain_id": 133,
+  "tx_hash": "0xd97a0054d252bccbb17cbb4e4f0fc84cbd23eba4bbfc84fc9c40ccf03a8225fb",
+  "explorer_tx_url": "https://testnet-explorer.hsk.xyz/tx/0xd97a0054d252bccbb17cbb4e4f0fc84cbd23eba4bbfc84fc9c40ccf03a8225fb",
+  "explorer_address_url": "https://testnet-explorer.hsk.xyz/address/0x3422820Ef9FBC8e0206E4CBcB6369dBd14BE18c4"
+}
+```
+Este es el anchor real creado durante la verificación del deploy en HSK
+Testnet — ver `v52-onchain/deployments/hsk-testnet.json`.
+
+`tx_hash` y `explorer_tx_url` son `null` si el hash de transacción no pudo
+recuperarse de los logs (best-effort: se consulta únicamente el bloque
+exacto reportado por el contrato, así que solo falla si el nodo RPC no
+tiene ese bloque indexado).
+
+##### Respuestas de Error:
+- **HTTP 422 Unprocessable Entity:** `manifest_root` no tiene el formato
+  `0x` + 64 caracteres hex.
+- **HTTP 404 Not Found:** ningún anchor existe para ese `manifest_root`.
+  ```json
+  {"detail": "No anchor found for manifest_root '0x...'."}
+  ```
+- **HTTP 503 Service Unavailable:** `HSK_RPC_URL` o
+  `HSK_EVIDENCE_REGISTRY_ADDRESS` no configuradas.
+
+##### Ejemplo con cURL:
+```bash
+curl http://localhost:8000/v1/anchors/0x2407b6f2529df3afbb2ab609cb236ff00b8421c7a57f78128ee58ed6d54f5005
+```
 
 ---
 

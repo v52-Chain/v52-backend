@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from app.api import (
     access,
     agent,
+    anchor,
     audits,
     cases,
     claim_audit,
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(audits.router)
     app.include_router(claim_audit.router)
     app.include_router(cases.router)
+    app.include_router(anchor.router)
     app.include_router(verify.router)
     app.include_router(access.router)
     app.include_router(agent.router)

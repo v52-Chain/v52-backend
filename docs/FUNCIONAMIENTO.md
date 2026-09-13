@@ -38,6 +38,12 @@
    - 13.3 [Canal Artificial: Micropagos x402 M2M y Liquidación en Avalanche](#133-canal-artificial-micropagos-x402-m2m-y-liquidación-en-avalanche)
    - 13.4 [Diagramas de Secuencia e Interacción Criptográfica](#134-diagramas-de-secuencia-e-interacción-criptográfica)
    - 13.5 [Matriz de Protección y Políticas de Cobro](#135-matriz-de-protección-y-políticas-de-cobro)
+14. [Anclaje HSK](#14-anclaje-hsk-apponchain-appapianchorpy)
+   - 14.1 [Qué se ancla y cómo se calcula](#141-qué-se-ancla-y-cómo-se-calcula)
+   - 14.2 [Cliente `HskRegistryClient`](#142-cliente-hskregistryclient-apponchainhsk_registrypy)
+   - 14.3 [Idempotencia y tolerancia a lag de lectura](#143-idempotencia-y-tolerancia-a-lag-de-lectura)
+   - 14.4 [Diagrama de secuencia](#144-diagrama-de-secuencia)
+   - 14.5 [Configuración](#145-configuración)
 
 ---
 
@@ -83,6 +89,7 @@ backend/
 │   │   ├── verify.py         # POST /v1/verify (audita paquetes .v52.zip)
 │   │   ├── access.py         # Autenticación con billetera
 │   │   ├── agent.py          # Rutas del agente
+│   │   ├── anchor.py         # POST /v1/cases/{id}/anchor, GET /v1/anchors/{root} — HSK
 │   │   └── wallet_flow.py    # Funciones de flujo de billetera (sin router)
 │   ├── claims/               # Módulos de compilación y auditoría de reclamos
 │   │   ├── compiler.py       # Descompone el reclamo en predicados formales
@@ -101,7 +108,11 @@ backend/
 │   │   ├── transfer.py       # DecodedTransfer, TokenMetadata (Transferencias ERC-20 deterministas)
 │   │   ├── verdict.py        # Verdict Enum (5 estados posibles)
 │   │   ├── access.py         # Modelos de autenticación
+│   │   ├── anchor.py         # AnchorCaseRequest/Response, AnchorLookupResponse
 │   │   └── wallet_flow.py    # WalletFlowResponse, WalletFlowLimits
+│   ├── onchain/               # Cliente HSK V52EvidenceRegistry (Saúl)
+│   │   ├── hsk_registry.py    # web3.py: anchorCase(), getAnchor(), logs de CaseAnchored
+│   │   └── abi/V52EvidenceRegistry.json # ABI vendorizado desde v52-onchain
 │   ├── orchestration/        # Orquestación de pipelines
 │   │   └── audit_pipeline.py # Pipeline secuencial de 7 etapas con medición de tiempos
 │   ├── packaging/            # Generación de paquetes forenses
@@ -121,7 +132,8 @@ backend/
 │   │   └── wallet_sessions.py # Gestión de sesiones de billetera autenticadas
 │   └── storage/              # Capa de almacenamiento y persistencia
 │       ├── case_repository.py# Interfaz CaseRepository y adaptador FileCaseRepository
-│       └── evidence_vault.py # Bóveda de almacenamiento append-only con SHA-256 sidecars
+│       ├── evidence_vault.py # Bóveda de almacenamiento append-only con SHA-256 sidecars
+│       └── anchor_store.py   # Caché local del último tx_hash de anclaje por caso
 ├── fixtures/                 # Casos reales verificados de Ethereum Mainnet
 │   └── known_case/           # Caso de prueba canónico documentado
 │       ├── CASE_NOTES.md     # Notas del caso, hash tx, remitente y análisis
@@ -774,4 +786,104 @@ Vector52 define cuatro niveles de acceso para balancear usabilidad, sostenibilid
 | **Nivel 1: Autenticación Web Interactiva** | Usuarios Humanos (PWA) | `POST /v1/auth/wallet/challenge`, `POST /v1/auth/wallet/verify`, `GET /v1/auth/wallet/me`, `POST /v1/web/investigations/wallet-flow`, `POST /v1/audits` | Firma SIWE sin gas. Sesión Bearer de 8 horas. Cuotas interactivas de investigación controladas por rate-limiting. |
 | **Nivel 2: Micropago M2M Agentes** | IAs, MCPs, Bots Autónomos | `POST /v1/agent/investigations/wallet-flow` (1000 atomic USDC) | Protocolo x402 v2 con settlement on-chain en Avalanche Fuji. Cobro por consulta para amortizar consumo de API externas. |
 | **Nivel 3: Operaciones On-Chain / Premium** | Humanos y Agentes | `POST /v1/paid/claim-audit` (5000 atomic USDC), `POST /v1/cases/{case_id}/anchor` (2000 atomic USDC), `GET /v1/cases/{case_id}/package` (500 atomic USDC) | Requiere pago x402 tanto para agentes como para humanos (modal Web3 en PWA) para cubrir patrocinio de gas en HSK y análisis con IA L5. |
+
+---
+
+## 14. Anclaje HSK (`app/onchain/`, `app/api/anchor.py`)
+
+`V52EvidenceRegistry` (`v52-onchain/contracts/hsk/V52EvidenceRegistry.sol`,
+desplegado en HSK Testnet: ver `v52-onchain/deployments/hsk-testnet.json`)
+ancla el compromiso criptográfico de un expediente `.v52` sin exponer su
+contenido. El backend es el único componente que habla con este contrato.
+
+### 14.1 Qué se ancla y cómo se calcula
+
+```
+manifest_root      = sha256(manifest.json exactamente como fue empaquetado en el .v52.zip)
+methodology_hash    = sha256(HSK_METHODOLOGY_VERSION)   # ej. "v52-contribution-0.1.0"
+schema_version      = manifest.json["schema_version"]
+case_id             = case_id del path (no sensible, ya público en el propio caso)
+supersedes          = manifest_root anterior, o 0x000...0 si es un primer anclaje
+```
+
+`manifest_root` se calcula leyendo `manifest.json` directamente del ZIP ya
+construido — nunca se reserializa. Esto garantiza que el hash anclado en
+HSK es exactamente el mismo que `POST /v1/verify` recalculará al validar
+cualquier copia del paquete, cerrando el circuito
+`.v52 → manifest_root → transacción HSK → GET /v1/anchors/{root} → verifier PASS`
+descrito en `docs/PROYECTO-FINAL.md` §7.1.
+
+### 14.2 Cliente `HskRegistryClient` (`app/onchain/hsk_registry.py`)
+
+Envoltorio delgado sobre `web3.py`:
+
+- **Lectura** (`get_anchor`, `is_anchored`, `find_anchor_tx_hash`): no
+  requiere llave privada. `find_anchor_tx_hash` consulta
+  `eth_getLogs` acotado al **bloque exacto** que el propio contrato reportó
+  (`Anchor.blockNumber`) — los nodos RPC públicos de HSK Testnet limitan el
+  rango de `eth_getLogs` a 100.000 bloques, por lo que escanear desde el
+  génesis no es viable en una cadena con historial largo.
+- **Escritura** (`anchor`): firma la transacción con
+  `HSK_ANCHOR_PRIVATE_KEY` (`eth_account.Account.sign_transaction`), la
+  envía con `eth_sendRawTransaction` y espera el recibo con
+  `wait_for_transaction_receipt`. Todas las llamadas son síncronas
+  (limitación de `web3.py`); los endpoints FastAPI las ejecutan con
+  `asyncio.to_thread()` para no bloquear el event loop.
+- **Saneamiento de errores:** toda excepción se envuelve en
+  `HskRegistryError` y se pasa por `redact()` (el mismo helper que usan los
+  providers RPC/Graph) antes de propagarse a la API — nunca se filtra la
+  URL del RPC ni la llave privada.
+
+### 14.3 Idempotencia y tolerancia a lag de lectura
+
+`POST /v1/cases/{case_id}/anchor` primero llama a `get_anchor(manifest_root)`.
+Si el root ya existe (reintento tras un paquete sin cambios, o una llamada
+duplicada), **no se envía una nueva transacción**: se responde con los
+datos ya anclados y `already_anchored: true`.
+
+Cuando sí se ancla por primera vez, se observó en HSK Testnet que leer el
+registro inmediatamente después de que `wait_for_transaction_receipt`
+confirma el minado puede fallar (`get_anchor` devuelve `None`) — el RPC
+público parece repartir lecturas entre nodos con leve desfase. El endpoint
+reintenta la relectura hasta 3 veces con 2s de espera
+(`_get_anchor_with_retry` en `app/api/anchor.py`) antes de responder `502`;
+la transacción en sí ya es final en ese punto, así que el reintento es de
+lectura pura y no reenvía nada a la cadena.
+
+### 14.4 Diagrama de secuencia
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Cliente (PWA/Agente)
+    participant B as Vector52 Backend (anchor.py)
+    participant W as HskRegistryClient (web3.py)
+    participant H as HSK Testnet RPC
+
+    C->>B: POST /v1/cases/{case_id}/anchor
+    B->>B: leer .v52.zip → manifest.json → sha256 → manifest_root
+    B->>W: get_anchor(manifest_root)
+    W->>H: eth_call getAnchor(manifest_root)
+    H-->>W: exists=false
+    B->>W: anchor(manifest_root, methodology_hash, schema_version, case_id, supersedes)
+    W->>W: firmar tx con HSK_ANCHOR_PRIVATE_KEY
+    W->>H: eth_sendRawTransaction
+    H-->>W: tx_hash
+    W->>H: eth_getTransactionReceipt (poll hasta minado)
+    H-->>W: receipt (status=1, blockNumber)
+    B->>W: get_anchor(manifest_root)  [reintenta hasta 3x si None]
+    W->>H: eth_call getAnchor(manifest_root)
+    H-->>W: Anchor{...}
+    B-->>C: 200 AnchorCaseResponse {tx_hash, explorer_tx_url, ...}
+```
+
+### 14.5 Configuración
+
+Ver `docs/API.md` §3.16 para el contrato HTTP completo y
+`README.md` §2 para las variables `HSK_RPC_URL`, `HSK_CHAIN_ID`,
+`HSK_EVIDENCE_REGISTRY_ADDRESS`, `HSK_EXPLORER_URL` y
+`HSK_ANCHOR_PRIVATE_KEY`. `GET /v1/anchors/{manifest_root}` solo requiere
+las dos primeras (lectura pública); `POST /v1/cases/{case_id}/anchor`
+requiere además la llave firmante, que debe estar allow-listada como
+`issuer` en el contrato (`v52-onchain/SECURITY.md`).
 
